@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_NODE_TXRECONCILIATION_H
-#define BITCOIN_NODE_TXRECONCILIATION_H
+#ifndef UNDAL_NODE_TXRECONCILIATION_H
+#define UNDAL_NODE_TXRECONCILIATION_H
 
 #include <net.h>
 #include <sync.h>
@@ -11,6 +11,8 @@
 #include <memory>
 #include <tuple>
 
+/** Whether transaction reconciliation protocol should be enabled by default. */
+static constexpr bool DEFAULT_TXRECONCILIATION_ENABLE{false};
 /** Supported transaction reconciliation protocol version */
 static constexpr uint32_t TXRECONCILIATION_VERSION{1};
 
@@ -86,4 +88,4 @@ public:
     bool IsPeerRegistered(NodeId peer_id) const;
 };
 
-#endif // BITCOIN_NODE_TXRECONCILIATION_H
+#endif // UNDAL_NODE_TXRECONCILIATION_H

@@ -9,24 +9,20 @@
 #include <validation.h>
 #include <validationinterface.h>
 
-void TestChainstateManager::ResetIbd()
+void TestChainState::ResetIbd()
 {
     m_cached_finished_ibd = false;
     assert(IsInitialBlockDownload());
 }
 
-void TestChainstateManager::JumpOutOfIbd()
+void TestChainState::JumpOutOfIbd()
 {
     Assert(IsInitialBlockDownload());
     m_cached_finished_ibd = true;
     Assert(!IsInitialBlockDownload());
 }
 
-void ValidationInterfaceTest::BlockConnected(
-        ChainstateRole role,
-        CValidationInterface& obj,
-        const std::shared_ptr<const CBlock>& block,
-        const CBlockIndex* pindex)
+void ValidationInterfaceTest::BlockConnected(CValidationInterface& obj, const std::shared_ptr<const CBlock>& block, const CBlockIndex* pindex)
 {
-    obj.BlockConnected(role, block, pindex);
+    obj.BlockConnected(block, pindex);
 }

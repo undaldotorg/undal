@@ -4,7 +4,7 @@
 
 #include <addrman.h>
 #include <chainparams.h>
-#include <common/args.h>
+#include <chainparamsbase.h>
 #include <net.h>
 #include <netaddress.h>
 #include <protocol.h>
@@ -13,6 +13,7 @@
 #include <test/fuzz/util.h>
 #include <test/fuzz/util/net.h>
 #include <test/util/setup_common.h>
+#include <util/system.h>
 #include <util/translation.h>
 
 #include <cstdint>
@@ -28,32 +29,19 @@ void initialize_connman()
     g_setup = testing_setup.get();
 }
 
-FUZZ_TARGET(connman, .init = initialize_connman)
+FUZZ_TARGET_INIT(connman, initialize_connman)
 {
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
     SetMockTime(ConsumeTime(fuzzed_data_provider));
-    ConnmanTestMsg connman{fuzzed_data_provider.ConsumeIntegral<uint64_t>(),
+    CConnman connman{fuzzed_data_provider.ConsumeIntegral<uint64_t>(),
                      fuzzed_data_provider.ConsumeIntegral<uint64_t>(),
                      *g_setup->m_node.addrman,
                      *g_setup->m_node.netgroupman,
-                     Params(),
                      fuzzed_data_provider.ConsumeBool()};
-
-    const uint64_t max_outbound_limit{fuzzed_data_provider.ConsumeIntegral<uint64_t>()};
-    CConnman::Options options;
-    options.nMaxOutboundLimit = max_outbound_limit;
-    connman.Init(options);
-
     CNetAddr random_netaddr;
     CNode random_node = ConsumeNode(fuzzed_data_provider);
     CSubNet random_subnet;
     std::string random_string;
-
-    LIMITED_WHILE(fuzzed_data_provider.ConsumeBool(), 100) {
-        CNode& p2p_node{*ConsumeNodeAsUniquePtr(fuzzed_data_provider).release()};
-        connman.AddTestNode(p2p_node);
-    }
-
     LIMITED_WHILE(fuzzed_data_provider.ConsumeBool(), 10000) {
         CallOneOf(
             fuzzed_data_provider,
@@ -67,7 +55,7 @@ FUZZ_TARGET(connman, .init = initialize_connman)
                 random_string = fuzzed_data_provider.ConsumeRandomLengthString(64);
             },
             [&] {
-                connman.AddNode({random_string, fuzzed_data_provider.ConsumeBool()});
+                connman.AddNode(random_string);
             },
             [&] {
                 connman.CheckIncomingNonce(fuzzed_data_provider.ConsumeIntegral<uint64_t>());
@@ -91,15 +79,16 @@ FUZZ_TARGET(connman, .init = initialize_connman)
                 (void)connman.ForNode(fuzzed_data_provider.ConsumeIntegral<NodeId>(), [&](auto) { return fuzzed_data_provider.ConsumeBool(); });
             },
             [&] {
-                auto max_addresses = fuzzed_data_provider.ConsumeIntegral<size_t>();
-                auto max_pct = fuzzed_data_provider.ConsumeIntegral<size_t>();
-                auto filtered = fuzzed_data_provider.ConsumeBool();
-                (void)connman.GetAddresses(max_addresses, max_pct, /*network=*/std::nullopt, filtered);
+                (void)connman.GetAddresses(
+                    /*max_addresses=*/fuzzed_data_provider.ConsumeIntegral<size_t>(),
+                    /*max_pct=*/fuzzed_data_provider.ConsumeIntegral<size_t>(),
+                    /*network=*/std::nullopt);
             },
             [&] {
-                auto max_addresses = fuzzed_data_provider.ConsumeIntegral<size_t>();
-                auto max_pct = fuzzed_data_provider.ConsumeIntegral<size_t>();
-                (void)connman.GetAddresses(/*requestor=*/random_node, max_addresses, max_pct);
+                (void)connman.GetAddresses(
+                    /*requestor=*/random_node,
+                    /*max_addresses=*/fuzzed_data_provider.ConsumeIntegral<size_t>(),
+                    /*max_pct=*/fuzzed_data_provider.ConsumeIntegral<size_t>());
             },
             [&] {
                 (void)connman.GetDeterministicRandomizer(fuzzed_data_provider.ConsumeIntegral<uint64_t>());
@@ -126,10 +115,10 @@ FUZZ_TARGET(connman, .init = initialize_connman)
                 connman.SetTryNewOutboundPeer(fuzzed_data_provider.ConsumeBool());
             });
     }
-    (void)connman.GetAddedNodeInfo(fuzzed_data_provider.ConsumeBool());
+    (void)connman.GetAddedNodeInfo();
     (void)connman.GetExtraFullOutboundCount();
     (void)connman.GetLocalServices();
-    assert(connman.GetMaxOutboundTarget() == max_outbound_limit);
+    (void)connman.GetMaxOutboundTarget();
     (void)connman.GetMaxOutboundTimeframe();
     (void)connman.GetMaxOutboundTimeLeftInCycle();
     (void)connman.GetNetworkActive();
@@ -140,6 +129,4 @@ FUZZ_TARGET(connman, .init = initialize_connman)
     (void)connman.GetTotalBytesSent();
     (void)connman.GetTryNewOutboundPeer();
     (void)connman.GetUseAddrmanOutgoing();
-
-    connman.ClearTestNodes();
 }

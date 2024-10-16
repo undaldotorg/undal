@@ -15,34 +15,44 @@
 #include <streams.h>
 #include <test/fuzz/fuzz.h>
 #include <univalue.h>
-#include <util/chaintype.h>
 #include <util/rbf.h>
 #include <validation.h>
+#include <version.h>
 
 #include <cassert>
 
 void initialize_transaction()
 {
-    SelectParams(ChainType::REGTEST);
+    SelectParams(CBaseChainParams::REGTEST);
 }
 
-FUZZ_TARGET(transaction, .init = initialize_transaction)
+FUZZ_TARGET_INIT(transaction, initialize_transaction)
 {
-    DataStream ds{buffer};
+    CDataStream ds(buffer, SER_NETWORK, INIT_PROTO_VERSION);
+    try {
+        int nVersion;
+        ds >> nVersion;
+        ds.SetVersion(nVersion);
+    } catch (const std::ios_base::failure&) {
+        return;
+    }
     bool valid_tx = true;
     const CTransaction tx = [&] {
         try {
-            return CTransaction(deserialize, TX_WITH_WITNESS, ds);
+            return CTransaction(deserialize, ds);
         } catch (const std::ios_base::failure&) {
             valid_tx = false;
             return CTransaction{CMutableTransaction{}};
         }
     }();
     bool valid_mutable_tx = true;
-    DataStream ds_mtx{buffer};
+    CDataStream ds_mtx(buffer, SER_NETWORK, INIT_PROTO_VERSION);
     CMutableTransaction mutable_tx;
     try {
-        ds_mtx >> TX_WITH_WITNESS(mutable_tx);
+        int nVersion;
+        ds_mtx >> nVersion;
+        ds_mtx.SetVersion(nVersion);
+        ds_mtx >> mutable_tx;
     } catch (const std::ios_base::failure&) {
         valid_mutable_tx = false;
     }
@@ -90,14 +100,7 @@ FUZZ_TARGET(transaction, .init = initialize_transaction)
     (void)AreInputsStandard(tx, coins_view_cache);
     (void)IsWitnessStandard(tx, coins_view_cache);
 
-    if (tx.GetTotalSize() < 250'000) { // Avoid high memory usage (with msan) due to json encoding
-        {
-            UniValue u{UniValue::VOBJ};
-            TxToUniv(tx, /*block_hash=*/uint256::ZERO, /*entry=*/u);
-        }
-        {
-            UniValue u{UniValue::VOBJ};
-            TxToUniv(tx, /*block_hash=*/uint256::ONE, /*entry=*/u);
-        }
-    }
+    UniValue u(UniValue::VOBJ);
+    TxToUniv(tx, /*block_hash=*/uint256::ZERO, /*entry=*/u);
+    TxToUniv(tx, /*block_hash=*/uint256::ONE, /*entry=*/u);
 }

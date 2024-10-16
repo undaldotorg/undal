@@ -2,15 +2,14 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
-#define BITCOIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
+#ifndef UNDAL_WALLET_TEST_WALLET_TEST_FIXTURE_H
+#define UNDAL_WALLET_TEST_WALLET_TEST_FIXTURE_H
 
 #include <test/util/setup_common.h>
 
 #include <interfaces/chain.h>
 #include <interfaces/wallet.h>
 #include <node/context.h>
-#include <util/chaintype.h>
 #include <util/check.h>
 #include <wallet/wallet.h>
 
@@ -20,7 +19,7 @@ namespace wallet {
 /** Testing setup and teardown for wallet.
  */
 struct WalletTestingSetup : public TestingSetup {
-    explicit WalletTestingSetup(const ChainType chainType = ChainType::MAIN);
+    explicit WalletTestingSetup(const std::string& chainName = CBaseChainParams::MAIN);
     ~WalletTestingSetup();
 
     std::unique_ptr<interfaces::WalletLoader> m_wallet_loader;
@@ -29,4 +28,4 @@ struct WalletTestingSetup : public TestingSetup {
 };
 } // namespace wallet
 
-#endif // BITCOIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
+#endif // UNDAL_WALLET_TEST_WALLET_TEST_FIXTURE_H

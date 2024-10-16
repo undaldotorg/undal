@@ -2,16 +2,20 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_CHECKQUEUE_H
-#define BITCOIN_CHECKQUEUE_H
+#ifndef UNDAL_CHECKQUEUE_H
+#define UNDAL_CHECKQUEUE_H
 
 #include <sync.h>
 #include <tinyformat.h>
+#include <util/syscall_sandbox.h>
 #include <util/threadnames.h>
 
 #include <algorithm>
 #include <iterator>
 #include <vector>
+
+template <typename T>
+class CCheckQueueControl;
 
 /**
  * Queue for verifications that have to be performed.
@@ -127,24 +131,29 @@ public:
     Mutex m_control_mutex;
 
     //! Create a new check queue
-    explicit CCheckQueue(unsigned int batch_size, int worker_threads_num)
-        : nBatchSize(batch_size)
+    explicit CCheckQueue(unsigned int nBatchSizeIn)
+        : nBatchSize(nBatchSizeIn)
     {
-        m_worker_threads.reserve(worker_threads_num);
-        for (int n = 0; n < worker_threads_num; ++n) {
+    }
+
+    //! Create a pool of new worker threads.
+    void StartWorkerThreads(const int threads_num) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex)
+    {
+        {
+            LOCK(m_mutex);
+            nIdle = 0;
+            nTotal = 0;
+            fAllOk = true;
+        }
+        assert(m_worker_threads.empty());
+        for (int n = 0; n < threads_num; ++n) {
             m_worker_threads.emplace_back([this, n]() {
                 util::ThreadRename(strprintf("scriptch.%i", n));
+                SetSyscallSandboxPolicy(SyscallSandboxPolicy::VALIDATION_SCRIPT_CHECK);
                 Loop(false /* worker thread */);
             });
         }
     }
-
-    // Since this class manages its own resources, which is a thread
-    // pool `m_worker_threads`, copy and move operations are not appropriate.
-    CCheckQueue(const CCheckQueue&) = delete;
-    CCheckQueue& operator=(const CCheckQueue&) = delete;
-    CCheckQueue(CCheckQueue&&) = delete;
-    CCheckQueue& operator=(CCheckQueue&&) = delete;
 
     //! Wait until execution finishes, and return whether all evaluations were successful.
     bool Wait() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex)
@@ -172,16 +181,24 @@ public:
         }
     }
 
-    ~CCheckQueue()
+    //! Stop all of the worker threads.
+    void StopWorkerThreads() EXCLUSIVE_LOCKS_REQUIRED(!m_mutex)
     {
         WITH_LOCK(m_mutex, m_request_stop = true);
         m_worker_cv.notify_all();
         for (std::thread& t : m_worker_threads) {
             t.join();
         }
+        m_worker_threads.clear();
+        WITH_LOCK(m_mutex, m_request_stop = false);
     }
 
     bool HasThreads() const { return !m_worker_threads.empty(); }
+
+    ~CCheckQueue()
+    {
+        assert(m_worker_threads.empty());
+    }
 };
 
 /**
@@ -233,4 +250,4 @@ public:
     }
 };
 
-#endif // BITCOIN_CHECKQUEUE_H
+#endif // UNDAL_CHECKQUEUE_H

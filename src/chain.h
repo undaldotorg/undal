@@ -3,28 +3,23 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_CHAIN_H
-#define BITCOIN_CHAIN_H
+#ifndef UNDAL_CHAIN_H
+#define UNDAL_CHAIN_H
 
 #include <arith_uint256.h>
 #include <consensus/params.h>
 #include <flatfile.h>
 #include <kernel/cs_main.h>
 #include <primitives/block.h>
-#include <serialize.h>
 #include <sync.h>
 #include <uint256.h>
 #include <util/time.h>
 
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <string>
 #include <vector>
 
 /**
  * Maximum amount of time that a block timestamp is allowed to exceed the
- * current time before the block will be accepted.
+ * current network-adjusted time before the block will be accepted.
  */
 static constexpr int64_t MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60;
 
@@ -40,20 +35,20 @@ static constexpr int64_t TIMESTAMP_WINDOW = MAX_FUTURE_BLOCK_TIME;
  * Maximum gap between node time and block time used
  * for the "Catching up..." mode in GUI.
  *
- * Ref: https://github.com/bitcoin/bitcoin/pull/1026
+ * Ref: https://github.com/undal/undal/pull/1026
  */
 static constexpr int64_t MAX_BLOCK_TIME_GAP = 90 * 60;
 
 class CBlockFileInfo
 {
 public:
-    unsigned int nBlocks{};      //!< number of blocks stored in file
-    unsigned int nSize{};        //!< number of used bytes of block file
-    unsigned int nUndoSize{};    //!< number of used bytes in the undo file
-    unsigned int nHeightFirst{}; //!< lowest height of block in file
-    unsigned int nHeightLast{};  //!< highest height of block in file
-    uint64_t nTimeFirst{};       //!< earliest time of block in file
-    uint64_t nTimeLast{};        //!< latest time of block in file
+    unsigned int nBlocks;      //!< number of blocks stored in file
+    unsigned int nSize;        //!< number of used bytes of block file
+    unsigned int nUndoSize;    //!< number of used bytes in the undo file
+    unsigned int nHeightFirst; //!< lowest height of block in file
+    unsigned int nHeightLast;  //!< highest height of block in file
+    uint64_t nTimeFirst;       //!< earliest time of block in file
+    uint64_t nTimeLast;        //!< latest time of block in file
 
     SERIALIZE_METHODS(CBlockFileInfo, obj)
     {
@@ -66,7 +61,21 @@ public:
         READWRITE(VARINT(obj.nTimeLast));
     }
 
-    CBlockFileInfo() = default;
+    void SetNull()
+    {
+        nBlocks = 0;
+        nSize = 0;
+        nUndoSize = 0;
+        nHeightFirst = 0;
+        nHeightLast = 0;
+        nTimeFirst = 0;
+        nTimeLast = 0;
+    }
+
+    CBlockFileInfo()
+    {
+        SetNull();
+    }
 
     std::string ToString() const;
 
@@ -98,20 +107,16 @@ enum BlockStatus : uint32_t {
 
     /**
      * Only first tx is coinbase, 2 <= coinbase input script length <= 100, transactions valid, no duplicate txids,
-     * sigops, size, merkle root. Implies all parents are at least TREE but not necessarily TRANSACTIONS.
-     *
-     * If a block's validity is at least VALID_TRANSACTIONS, CBlockIndex::nTx will be set. If a block and all previous
-     * blocks back to the genesis block or an assumeutxo snapshot block are at least VALID_TRANSACTIONS,
-     * CBlockIndex::m_chain_tx_count will be set.
+     * sigops, size, merkle root. Implies all parents are at least TREE but not necessarily TRANSACTIONS. When all
+     * parent blocks also have TRANSACTIONS, CBlockIndex::nChainTx will be set.
      */
     BLOCK_VALID_TRANSACTIONS =    3,
 
     //! Outputs do not overspend inputs, no double spends, coinbase output ok, no immature coinbase spends, BIP30.
-    //! Implies all previous blocks back to the genesis block or an assumeutxo snapshot block are at least VALID_CHAIN.
+    //! Implies all parents are also at least CHAIN.
     BLOCK_VALID_CHAIN        =    4,
 
-    //! Scripts & signatures ok. Implies all previous blocks back to the genesis block or an assumeutxo snapshot block
-    //! are at least VALID_SCRIPTS.
+    //! Scripts & signatures ok. Implies all parents are also at least SCRIPTS.
     BLOCK_VALID_SCRIPTS      =    5,
 
     //! All validity bits.
@@ -128,8 +133,13 @@ enum BlockStatus : uint32_t {
 
     BLOCK_OPT_WITNESS        =   128, //!< block data in blk*.dat was received with a witness-enforcing client
 
-    BLOCK_STATUS_RESERVED    =   256, //!< Unused flag that was previously set on assumeutxo snapshot blocks and their
-                                      //!< ancestors before they were validated, and unset when they were validated.
+    /**
+     * If set, this indicates that the block index entry is assumed-valid.
+     * Certain diagnostics will be skipped in e.g. CheckBlockIndex().
+     * It almost certainly means that the block's full validation is pending
+     * on a background chainstate. See `doc/design/assumeutxo.md`.
+     */
+    BLOCK_ASSUMED_VALID      =   256,
 };
 
 /** The block chain is a tree shaped structure starting with the
@@ -164,21 +174,27 @@ public:
     //! (memory only) Total amount of work (expected number of hashes) in the chain up to and including this block
     arith_uint256 nChainWork{};
 
-    //! Number of transactions in this block. This will be nonzero if the block
-    //! reached the VALID_TRANSACTIONS level, and zero otherwise.
+    //! Number of transactions in this block.
     //! Note: in a potential headers-first mode, this number cannot be relied upon
+    //! Note: this value is faked during UTXO snapshot load to ensure that
+    //! LoadBlockIndex() will load index entries for blocks that we lack data for.
+    //! @sa ActivateSnapshot
     unsigned int nTx{0};
 
     //! (memory only) Number of transactions in the chain up to and including this block.
-    //! This value will be non-zero if this block and all previous blocks back
-    //! to the genesis block or an assumeutxo snapshot block have reached the
-    //! VALID_TRANSACTIONS level.
-    uint64_t m_chain_tx_count{0};
+    //! This value will be non-zero only if and only if transactions for this block and all its parents are available.
+    //! Change to 64-bit type before 2024 (assuming worst case of 60 byte transactions).
+    //!
+    //! Note: this value is faked during use of a UTXO snapshot because we don't
+    //! have the underlying block data available during snapshot load.
+    //! @sa AssumeutxoData
+    //! @sa ActivateSnapshot
+    unsigned int nChainTx{0};
 
     //! Verification status of this block. See enum BlockStatus
     //!
     //! Note: this value is modified to show BLOCK_OPT_WITNESS during UTXO snapshot
-    //! load to avoid a spurious startup failure requiring -reindex.
+    //! load to avoid the block index being spuriously rewound.
     //! @sa NeedsRedownload
     //! @sa ActivateSnapshot
     uint32_t nStatus GUARDED_BY(::cs_main){0};
@@ -247,16 +263,13 @@ public:
     }
 
     /**
-     * Check whether this block and all previous blocks back to the genesis block or an assumeutxo snapshot block have
-     * reached VALID_TRANSACTIONS and had transactions downloaded (and stored to disk) at some point.
+     * Check whether this block's and all previous blocks' transactions have been
+     * downloaded (and stored to disk) at some point.
      *
      * Does not imply the transactions are consensus-valid (ConnectTip might fail)
      * Does not imply the transactions are still stored on disk. (IsBlockPruned might return true)
-     *
-     * Note that this will be true for the snapshot base block, if one is loaded, since its m_chain_tx_count value will have
-     * been set manually based on the related AssumeutxoData entry.
      */
-    bool HaveNumChainTxs() const { return m_chain_tx_count != 0; }
+    bool HaveTxsDownloaded() const { return nChainTx != 0; }
 
     NodeSeconds Time() const
     {
@@ -302,6 +315,14 @@ public:
         return ((nStatus & BLOCK_VALID_MASK) >= nUpTo);
     }
 
+    //! @returns true if the block is assumed-valid; this means it is queued to be
+    //!   validated by a background chainstate.
+    bool IsAssumedValid() const EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
+    {
+        AssertLockHeld(::cs_main);
+        return nStatus & BLOCK_ASSUMED_VALID;
+    }
+
     //! Raise the validity level of this block index entry.
     //! Returns true if the validity was changed.
     bool RaiseValidity(enum BlockStatus nUpTo) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
@@ -311,6 +332,12 @@ public:
         if (nStatus & BLOCK_FAILED_MASK) return false;
 
         if ((nStatus & BLOCK_VALID_MASK) < nUpTo) {
+            // If this block had been marked assumed-valid and we're raising
+            // its validity to a certain point, there is no longer an assumption.
+            if (nStatus & BLOCK_ASSUMED_VALID && nUpTo >= BLOCK_VALID_SCRIPTS) {
+                nStatus &= ~BLOCK_ASSUMED_VALID;
+            }
+
             nStatus = (nStatus & ~BLOCK_VALID_MASK) | nUpTo;
             return true;
         }
@@ -353,14 +380,6 @@ const CBlockIndex* LastCommonAncestor(const CBlockIndex* pa, const CBlockIndex* 
 /** Used to marshal pointers into hashes for db storage. */
 class CDiskBlockIndex : public CBlockIndex
 {
-    /** Historically CBlockLocator's version field has been written to disk
-     * streams as the client version, but the value has never been used.
-     *
-     * Hard-code to the highest client version ever written.
-     * SerParams can be used if the field requires any meaning in the future.
-     **/
-    static constexpr int DUMMY_VERSION = 259900;
-
 public:
     uint256 hashPrev;
 
@@ -377,8 +396,8 @@ public:
     SERIALIZE_METHODS(CDiskBlockIndex, obj)
     {
         LOCK(::cs_main);
-        int _nVersion = DUMMY_VERSION;
-        READWRITE(VARINT_MODE(_nVersion, VarIntMode::NONNEGATIVE_SIGNED));
+        int _nVersion = s.GetVersion();
+        if (!(s.GetType() & SER_GETHASH)) READWRITE(VARINT_MODE(_nVersion, VarIntMode::NONNEGATIVE_SIGNED));
 
         READWRITE(VARINT_MODE(obj.nHeight, VarIntMode::NONNEGATIVE_SIGNED));
         READWRITE(VARINT(obj.nStatus));
@@ -483,4 +502,4 @@ CBlockLocator GetLocator(const CBlockIndex* index);
 /** Construct a list of hash entries to put in a locator.  */
 std::vector<uint256> LocatorEntries(const CBlockIndex* index);
 
-#endif // BITCOIN_CHAIN_H
+#endif // UNDAL_CHAIN_H

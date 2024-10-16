@@ -11,7 +11,6 @@ testing.
 import os
 
 from .authproxy import AuthServiceProxy
-from typing import Optional
 
 REFERENCE_FILENAME = 'rpc_interface.txt'
 
@@ -21,7 +20,7 @@ class AuthServiceProxyWrapper():
     An object that wraps AuthServiceProxy to record specific RPC calls.
 
     """
-    def __init__(self, auth_service_proxy_instance: AuthServiceProxy, rpc_url: str, coverage_logfile: Optional[str]=None):
+    def __init__(self, auth_service_proxy_instance: AuthServiceProxy, rpc_url: str, coverage_logfile: str=None):
         """
         Kwargs:
             auth_service_proxy_instance: the instance being wrapped.
@@ -80,7 +79,7 @@ def get_filename(dirname, n_node):
 
 def write_all_rpc_commands(dirname: str, node: AuthServiceProxy) -> bool:
     """
-    Write out a list of all RPC functions available in `bitcoin-cli` for
+    Write out a list of all RPC functions available in `undal-cli` for
     coverage comparison. This will only happen once per coverage
     directory.
 

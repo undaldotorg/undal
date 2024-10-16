@@ -4,21 +4,30 @@
 
 #include <kernel/checks.h>
 
+#include <key.h>
 #include <random.h>
-#include <util/result.h>
+#include <util/time.h>
 #include <util/translation.h>
 
 #include <memory>
 
 namespace kernel {
 
-util::Result<void> SanityChecks(const Context&)
+std::optional<bilingual_str> SanityChecks(const Context&)
 {
-    if (!Random_SanityCheck()) {
-        return util::Error{Untranslated("OS cryptographic RNG sanity check failure. Aborting.")};
+    if (!ECC_InitSanityCheck()) {
+        return Untranslated("Elliptic curve cryptography sanity check failure. Aborting.");
     }
 
-    return {};
+    if (!Random_SanityCheck()) {
+        return Untranslated("OS cryptographic RNG sanity check failure. Aborting.");
+    }
+
+    if (!ChronoSanityCheck()) {
+        return Untranslated("Clock epoch mismatch. Aborting.");
+    }
+
+    return std::nullopt;
 }
 
 }

@@ -11,7 +11,7 @@ from test_framework.messages import (
     COIN,
     SEQUENCE_FINAL,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -20,24 +20,22 @@ from test_framework.wallet import MiniWallet
 from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE
 
 MAX_REPLACEMENT_LIMIT = 100
-class ReplaceByFeeTest(BitcoinTestFramework):
+class ReplaceByFeeTest(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
     def set_test_params(self):
         self.num_nodes = 2
-        # both nodes disable full-rbf to test BIP125 signaling
         self.extra_args = [
             [
-                "-mempoolfullrbf=0",
+                "-maxorphantx=1000",
                 "-limitancestorcount=50",
                 "-limitancestorsize=101",
                 "-limitdescendantcount=200",
                 "-limitdescendantsize=101",
             ],
-            # second node has default mempool parameters, besides mempoolfullrbf being disabled
+            # second node has default mempool parameters
             [
-                "-mempoolfullrbf=0",
             ],
         ]
         self.supports_cli = False
@@ -95,7 +93,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         confirmed - txout created will be confirmed in the blockchain;
                     unconfirmed otherwise.
         """
-        tx = self.wallet.send_to(from_node=node, scriptPubKey=scriptPubKey or self.wallet.get_scriptPubKey(), amount=amount)
+        txid, n = self.wallet.send_to(from_node=node, scriptPubKey=scriptPubKey or self.wallet.get_scriptPubKey(), amount=amount)
 
         if confirmed:
             mempool_size = len(node.getrawmempool())
@@ -107,7 +105,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
                 assert new_size < mempool_size
                 mempool_size = new_size
 
-        return self.wallet.get_utxo(txid=tx["txid"], vout=tx["sent_vout"])
+        return self.wallet.get_utxo(txid=txid, vout=n)
 
     def test_simple_doublespend(self):
         """Simple doublespend"""
@@ -122,7 +120,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         # This will raise an exception due to insufficient fee
         assert_raises_rpc_error(-26, "insufficient fee", self.nodes[0].sendrawtransaction, tx.serialize().hex(), 0)
 
-        # Extra 0.1 BTC fee
+        # Extra 0.1 UBTC fee
         tx.vout[0].nValue -= int(0.1 * COIN)
         tx1b_hex = tx.serialize().hex()
         # Works when enabled
@@ -155,7 +153,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
             chain_txids.append(prevout["txid"])
 
         # Whether the double-spend is allowed is evaluated by including all
-        # child fees - 4 BTC - so this attempt is rejected.
+        # child fees - 4 UBTC - so this attempt is rejected.
         dbl_tx = self.wallet.create_self_transfer(
             utxo_to_spend=tx0_outpoint,
             sequence=0,
@@ -223,7 +221,7 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         # This will raise an exception due to insufficient fee
         assert_raises_rpc_error(-26, "insufficient fee", self.nodes[0].sendrawtransaction, dbl_tx_hex, 0)
 
-        # 0.1 BTC fee is enough
+        # 0.1 UBTC fee is enough
         dbl_tx_hex = self.wallet.create_self_transfer(
             utxo_to_spend=tx0_outpoint,
             sequence=0,
@@ -730,4 +728,4 @@ class ReplaceByFeeTest(BitcoinTestFramework):
         assert conflicting_tx['txid'] in self.nodes[0].getrawmempool()
 
 if __name__ == '__main__':
-    ReplaceByFeeTest(__file__).main()
+    ReplaceByFeeTest().main()

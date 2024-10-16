@@ -1,10 +1,11 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2024 The Undal Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_RPC_SERVER_H
-#define BITCOIN_RPC_SERVER_H
+#ifndef UNDAL_RPC_SERVER_H
+#define UNDAL_RPC_SERVER_H
 
 #include <rpc/request.h>
 #include <rpc/util.h>
@@ -16,7 +17,15 @@
 
 #include <univalue.h>
 
+static const unsigned int DEFAULT_RPC_SERIALIZE_VERSION = 1;
+
 class CRPCCommand;
+
+namespace RPCServer
+{
+    void OnStarted(std::function<void ()> slot);
+    void OnStopped(std::function<void ()> slot);
+}
 
 /** Query whether RPC is running */
 bool IsRPCRunning();
@@ -42,7 +51,7 @@ bool RPCIsInWarmup(std::string *outStatus);
 class RPCTimerBase
 {
 public:
-    virtual ~RPCTimerBase() = default;
+    virtual ~RPCTimerBase() {}
 };
 
 /**
@@ -51,7 +60,7 @@ public:
 class RPCTimerInterface
 {
 public:
-    virtual ~RPCTimerInterface() = default;
+    virtual ~RPCTimerInterface() {}
     /** Implementation name */
     virtual const char *Name() = 0;
     /** Factory function for timers.
@@ -87,7 +96,7 @@ public:
     using Actor = std::function<bool(const JSONRPCRequest& request, UniValue& result, bool last_handler)>;
 
     //! Constructor taking Actor callback supporting multiple handlers.
-    CRPCCommand(std::string category, std::string name, Actor actor, std::vector<std::pair<std::string, bool>> args, intptr_t unique_id)
+    CRPCCommand(std::string category, std::string name, Actor actor, std::vector<std::string> args, intptr_t unique_id)
         : category(std::move(category)), name(std::move(name)), actor(std::move(actor)), argNames(std::move(args)),
           unique_id(unique_id)
     {
@@ -107,16 +116,7 @@ public:
     std::string category;
     std::string name;
     Actor actor;
-    //! List of method arguments and whether they are named-only. Incoming RPC
-    //! requests contain a "params" field that can either be an array containing
-    //! unnamed arguments or an object containing named arguments. The
-    //! "argNames" vector is used in the latter case to transform the params
-    //! object into an array. Each argument in "argNames" gets mapped to a
-    //! unique position in the array, based on the order it is listed, unless
-    //! the argument is a named-only argument with argNames[x].second set to
-    //! true. Named-only arguments are combined into a JSON object that is
-    //! appended after other arguments, see transformNamedArguments for details.
-    std::vector<std::pair<std::string, bool>> argNames;
+    std::vector<std::string> argNames;
     intptr_t unique_id;
 };
 
@@ -173,6 +173,9 @@ extern CRPCTable tableRPC;
 void StartRPC();
 void InterruptRPC();
 void StopRPC();
-UniValue JSONRPCExec(const JSONRPCRequest& jreq, bool catch_errors);
+std::string JSONRPCExecBatch(const JSONRPCRequest& jreq, const UniValue& vReq);
 
-#endif // BITCOIN_RPC_SERVER_H
+// Retrieves any serialization flags requested in command line argument
+int RPCSerializationFlags();
+
+#endif // UNDAL_RPC_SERVER_H

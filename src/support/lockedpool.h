@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_SUPPORT_LOCKEDPOOL_H
-#define BITCOIN_SUPPORT_LOCKEDPOOL_H
+#ifndef UNDAL_SUPPORT_LOCKEDPOOL_H
+#define UNDAL_SUPPORT_LOCKEDPOOL_H
 
 #include <cstddef>
 #include <list>
@@ -19,7 +19,7 @@
 class LockedPageAllocator
 {
 public:
-    virtual ~LockedPageAllocator() = default;
+    virtual ~LockedPageAllocator() {}
     /** Allocate and lock memory pages.
      * If len is not a multiple of the system page size, it is rounded up.
      * Returns nullptr in case of allocation failure.
@@ -237,4 +237,4 @@ private:
     static LockedPoolManager* _instance;
 };
 
-#endif // BITCOIN_SUPPORT_LOCKEDPOOL_H
+#endif // UNDAL_SUPPORT_LOCKEDPOOL_H

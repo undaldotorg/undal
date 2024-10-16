@@ -7,10 +7,10 @@
 
 from test_framework.messages import msg_getheaders, msg_getblocks, MAX_LOCATOR_SZ
 from test_framework.p2p import P2PInterface
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 
 
-class InvalidLocatorTest(BitcoinTestFramework):
+class InvalidLocatorTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -32,11 +32,11 @@ class InvalidLocatorTest(BitcoinTestFramework):
             within_max_peer = node.add_p2p_connection(P2PInterface())
             msg.locator.vHave = [int(node.getblockhash(i - 1), 16) for i in range(block_count, block_count - (MAX_LOCATOR_SZ), -1)]
             within_max_peer.send_message(msg)
-            if type(msg) is msg_getheaders:
+            if type(msg) == msg_getheaders:
                 within_max_peer.wait_for_header(node.getbestblockhash())
             else:
                 within_max_peer.wait_for_block(int(node.getbestblockhash(), 16))
 
 
 if __name__ == '__main__':
-    InvalidLocatorTest(__file__).main()
+    InvalidLocatorTest().main()

@@ -6,7 +6,7 @@
 
 import socket
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
 
 
@@ -26,7 +26,7 @@ def is_valid_ipv6_address(address):
     return True
 
 
-class DiscoverTest(BitcoinTestFramework):
+class DiscoverTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.bind_to_localhost_only = False
@@ -72,4 +72,4 @@ class DiscoverTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    DiscoverTest(__file__).main()
+    DiscoverTest().main()

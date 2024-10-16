@@ -3,14 +3,18 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <base58.h>
+#include <core_io.h>
 #include <key.h>
 #include <key_io.h>
+#include <node/context.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <psbt.h>
+#include <rpc/blockchain.h>
 #include <rpc/client.h>
 #include <rpc/request.h>
 #include <rpc/server.h>
+#include <rpc/util.h>
 #include <span.h>
 #include <streams.h>
 #include <test/fuzz/FuzzedDataProvider.h>
@@ -18,30 +22,22 @@
 #include <test/fuzz/util.h>
 #include <test/util/setup_common.h>
 #include <tinyformat.h>
-#include <uint256.h>
 #include <univalue.h>
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/time.h>
 
-#include <algorithm>
-#include <cassert>
 #include <cstdint>
-#include <cstdlib>
-#include <exception>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <vector>
-enum class ChainType;
-
-using util::Join;
-using util::ToString;
 
 namespace {
 struct RPCFuzzTestingSetup : public TestingSetup {
-    RPCFuzzTestingSetup(const ChainType chain_type, TestOpts opts) : TestingSetup{chain_type, opts}
+    RPCFuzzTestingSetup(const std::string& chain_name, const std::vector<const char*>& extra_args) : TestingSetup{chain_name, extra_args}
     {
     }
 
@@ -74,17 +70,16 @@ const std::vector<std::string> RPC_COMMANDS_NOT_SAFE_FOR_FUZZING{
     "addconnection",  // avoid DNS lookups
     "addnode",        // avoid DNS lookups
     "addpeeraddress", // avoid DNS lookups
+    "analyzepsbt",    // avoid signed integer overflow in CFeeRate::GetFee(unsigned long) (https://github.com/undal/undal/issues/20607)
     "dumptxoutset",   // avoid writing to disk
     "dumpwallet", // avoid writing to disk
-    "enumeratesigners",
     "echoipc",              // avoid assertion failure (Assertion `"EnsureAnyNodeContext(request.context).init" && check' failed.)
     "generatetoaddress",    // avoid prohibitively slow execution (when `num_blocks` is large)
     "generatetodescriptor", // avoid prohibitively slow execution (when `nblocks` is large)
     "gettxoutproof",        // avoid prohibitively slow execution
-    "importmempool", // avoid reading from disk
     "importwallet", // avoid reading from disk
-    "loadtxoutset",   // avoid reading from disk
     "loadwallet",   // avoid reading from disk
+    "prioritisetransaction", // avoid signed integer overflow in CTxMemPool::PrioritiseTransaction(uint256 const&, long const&) (https://github.com/undal/undal/issues/20626)
     "savemempool",           // disabled as a precautionary measure: may take a file path argument in the future
     "setban",                // avoid DNS lookups
     "stop",                  // avoid shutdown state
@@ -92,7 +87,6 @@ const std::vector<std::string> RPC_COMMANDS_NOT_SAFE_FOR_FUZZING{
 
 // RPC commands which are safe for fuzzing.
 const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
-    "analyzepsbt",
     "clearbanned",
     "combinepsbt",
     "combinerawtransaction",
@@ -104,7 +98,6 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "decoderawtransaction",
     "decodescript",
     "deriveaddresses",
-    "descriptorprocesspsbt",
     "disconnectnode",
     "echo",
     "echojson",
@@ -114,19 +107,17 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "generate",
     "generateblock",
     "getaddednodeinfo",
-    "getaddrmaninfo",
     "getbestblockhash",
     "getblock",
     "getblockchaininfo",
     "getblockcount",
     "getblockfilter",
-    "getblockfrompeer", // when no peers are connected, no p2p message is sent
     "getblockhash",
     "getblockheader",
+    "getblockfrompeer", // when no peers are connected, no p2p message is sent
     "getblockstats",
     "getblocktemplate",
     "getchaintips",
-    "getchainstates",
     "getchaintxstats",
     "getconnectioncount",
     "getdeploymentinfo",
@@ -137,22 +128,19 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "getmempoolancestors",
     "getmempooldescendants",
     "getmempoolentry",
+    "gettxspendingprevout",
     "getmempoolinfo",
     "getmininginfo",
     "getnettotals",
     "getnetworkhashps",
     "getnetworkinfo",
     "getnodeaddresses",
-    "getorphantxs",
     "getpeerinfo",
-    "getprioritisedtransactions",
-    "getrawaddrman",
     "getrawmempool",
     "getrawtransaction",
     "getrpcinfo",
     "gettxout",
     "gettxoutsetinfo",
-    "gettxspendingprevout",
     "help",
     "invalidateblock",
     "joinpsbts",
@@ -161,12 +149,10 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "mockscheduler",
     "ping",
     "preciousblock",
-    "prioritisetransaction",
     "pruneblockchain",
     "reconsiderblock",
     "scanblocks",
     "scantxoutset",
-    "sendmsgtopeer", // when no peers are connected, no p2p message is sent
     "sendrawtransaction",
     "setmocktime",
     "setnetworkactive",
@@ -188,7 +174,7 @@ const std::vector<std::string> RPC_COMMANDS_SAFE_FOR_FUZZING{
     "waitfornewblock",
 };
 
-std::string ConsumeScalarRPCArgument(FuzzedDataProvider& fuzzed_data_provider, bool& good_data)
+std::string ConsumeScalarRPCArgument(FuzzedDataProvider& fuzzed_data_provider)
 {
     const size_t max_string_length = 4096;
     const size_t max_base58_bytes_length{64};
@@ -253,20 +239,18 @@ std::string ConsumeScalarRPCArgument(FuzzedDataProvider& fuzzed_data_provider, b
         },
         [&] {
             // hex encoded block
-            std::optional<CBlock> opt_block = ConsumeDeserializable<CBlock>(fuzzed_data_provider, TX_WITH_WITNESS);
+            std::optional<CBlock> opt_block = ConsumeDeserializable<CBlock>(fuzzed_data_provider);
             if (!opt_block) {
-                good_data = false;
                 return;
             }
-            DataStream data_stream{};
-            data_stream << TX_WITH_WITNESS(*opt_block);
+            CDataStream data_stream{SER_NETWORK, PROTOCOL_VERSION};
+            data_stream << *opt_block;
             r = HexStr(data_stream);
         },
         [&] {
             // hex encoded block header
             std::optional<CBlockHeader> opt_block_header = ConsumeDeserializable<CBlockHeader>(fuzzed_data_provider);
             if (!opt_block_header) {
-                good_data = false;
                 return;
             }
             DataStream data_stream{};
@@ -275,41 +259,40 @@ std::string ConsumeScalarRPCArgument(FuzzedDataProvider& fuzzed_data_provider, b
         },
         [&] {
             // hex encoded tx
-            std::optional<CMutableTransaction> opt_tx = ConsumeDeserializable<CMutableTransaction>(fuzzed_data_provider, TX_WITH_WITNESS);
+            std::optional<CMutableTransaction> opt_tx = ConsumeDeserializable<CMutableTransaction>(fuzzed_data_provider);
             if (!opt_tx) {
-                good_data = false;
                 return;
             }
-            DataStream data_stream;
-            auto allow_witness = (fuzzed_data_provider.ConsumeBool() ? TX_WITH_WITNESS : TX_NO_WITNESS);
-            data_stream << allow_witness(*opt_tx);
+            CDataStream data_stream{SER_NETWORK, fuzzed_data_provider.ConsumeBool() ? PROTOCOL_VERSION : (PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS)};
+            data_stream << *opt_tx;
             r = HexStr(data_stream);
         },
         [&] {
             // base64 encoded psbt
             std::optional<PartiallySignedTransaction> opt_psbt = ConsumeDeserializable<PartiallySignedTransaction>(fuzzed_data_provider);
             if (!opt_psbt) {
-                good_data = false;
                 return;
             }
-            DataStream data_stream{};
+            CDataStream data_stream{SER_NETWORK, PROTOCOL_VERSION};
             data_stream << *opt_psbt;
             r = EncodeBase64(data_stream);
         },
         [&] {
             // base58 encoded key
-            CKey key = ConsumePrivateKey(fuzzed_data_provider);
+            const std::vector<uint8_t> random_bytes = fuzzed_data_provider.ConsumeBytes<uint8_t>(32);
+            CKey key;
+            key.Set(random_bytes.begin(), random_bytes.end(), fuzzed_data_provider.ConsumeBool());
             if (!key.IsValid()) {
-                good_data = false;
                 return;
             }
             r = EncodeSecret(key);
         },
         [&] {
             // hex encoded pubkey
-            CKey key = ConsumePrivateKey(fuzzed_data_provider);
+            const std::vector<uint8_t> random_bytes = fuzzed_data_provider.ConsumeBytes<uint8_t>(32);
+            CKey key;
+            key.Set(random_bytes.begin(), random_bytes.end(), fuzzed_data_provider.ConsumeBool());
             if (!key.IsValid()) {
-                good_data = false;
                 return;
             }
             r = HexStr(key.GetPubKey());
@@ -317,19 +300,18 @@ std::string ConsumeScalarRPCArgument(FuzzedDataProvider& fuzzed_data_provider, b
     return r;
 }
 
-std::string ConsumeArrayRPCArgument(FuzzedDataProvider& fuzzed_data_provider, bool& good_data)
+std::string ConsumeArrayRPCArgument(FuzzedDataProvider& fuzzed_data_provider)
 {
     std::vector<std::string> scalar_arguments;
-    LIMITED_WHILE(good_data && fuzzed_data_provider.ConsumeBool(), 100)
-    {
-        scalar_arguments.push_back(ConsumeScalarRPCArgument(fuzzed_data_provider, good_data));
+    LIMITED_WHILE(fuzzed_data_provider.ConsumeBool(), 100) {
+        scalar_arguments.push_back(ConsumeScalarRPCArgument(fuzzed_data_provider));
     }
     return "[\"" + Join(scalar_arguments, "\",\"") + "\"]";
 }
 
-std::string ConsumeRPCArgument(FuzzedDataProvider& fuzzed_data_provider, bool& good_data)
+std::string ConsumeRPCArgument(FuzzedDataProvider& fuzzed_data_provider)
 {
-    return fuzzed_data_provider.ConsumeBool() ? ConsumeScalarRPCArgument(fuzzed_data_provider, good_data) : ConsumeArrayRPCArgument(fuzzed_data_provider, good_data);
+    return fuzzed_data_provider.ConsumeBool() ? ConsumeScalarRPCArgument(fuzzed_data_provider) : ConsumeArrayRPCArgument(fuzzed_data_provider);
 }
 
 RPCFuzzTestingSetup* InitializeRPCFuzzTestingSetup()
@@ -362,10 +344,9 @@ void initialize_rpc()
     }
 }
 
-FUZZ_TARGET(rpc, .init = initialize_rpc)
+FUZZ_TARGET_INIT(rpc, initialize_rpc)
 {
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
-    bool good_data{true};
     SetMockTime(ConsumeTime(fuzzed_data_provider));
     const std::string rpc_command = fuzzed_data_provider.ConsumeRandomLengthString(64);
     if (!g_limit_to_rpc_command.empty() && rpc_command != g_limit_to_rpc_command) {
@@ -376,15 +357,16 @@ FUZZ_TARGET(rpc, .init = initialize_rpc)
         return;
     }
     std::vector<std::string> arguments;
-    LIMITED_WHILE(good_data && fuzzed_data_provider.ConsumeBool(), 100)
-    {
-        arguments.push_back(ConsumeRPCArgument(fuzzed_data_provider, good_data));
+    LIMITED_WHILE(fuzzed_data_provider.ConsumeBool(), 100) {
+        arguments.push_back(ConsumeRPCArgument(fuzzed_data_provider));
     }
     try {
         rpc_testing_setup->CallRPC(rpc_command, arguments);
     } catch (const UniValue& json_rpc_error) {
-        const std::string error_msg{json_rpc_error.find_value("message").get_str()};
-        if (error_msg.starts_with("Internal bug detected")) {
+        const std::string error_msg{find_value(json_rpc_error, "message").get_str()};
+        // Once c++20 is allowed, starts_with can be used.
+        // if (error_msg.starts_with("Internal bug detected")) {
+        if (0 == error_msg.rfind("Internal bug detected", 0)) {
             // Only allow the intentional internal bug
             assert(error_msg.find("trigger_internal_bug") != std::string::npos);
         }

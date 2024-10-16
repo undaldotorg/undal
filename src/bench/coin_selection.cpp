@@ -3,28 +3,13 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <bench/bench.h>
-#include <consensus/amount.h>
 #include <interfaces/chain.h>
 #include <node/context.h>
-#include <outputtype.h>
-#include <policy/feerate.h>
-#include <policy/policy.h>
-#include <primitives/transaction.h>
-#include <random.h>
-#include <sync.h>
-#include <util/result.h>
 #include <wallet/coinselection.h>
 #include <wallet/spend.h>
-#include <wallet/test/util.h>
-#include <wallet/transaction.h>
 #include <wallet/wallet.h>
 
-#include <cassert>
-#include <map>
-#include <memory>
 #include <set>
-#include <utility>
-#include <vector>
 
 using node::NodeContext;
 using wallet::AttemptSelection;
@@ -34,7 +19,7 @@ using wallet::CWallet;
 using wallet::CWalletTx;
 using wallet::CoinEligibilityFilter;
 using wallet::CoinSelectionParams;
-using wallet::CreateMockableWalletDatabase;
+using wallet::CreateDummyWalletDatabase;
 using wallet::OutputGroup;
 using wallet::SelectCoinsBnB;
 using wallet::TxStateInactive;
@@ -55,12 +40,12 @@ static void addCoin(const CAmount& nValue, const CWallet& wallet, std::vector<st
 // the hardest, as you need a wider selection of scenarios, just testing the
 // same one over and over isn't too useful. Generating random isn't useful
 // either for measurements."
-// (https://github.com/bitcoin/bitcoin/issues/7883#issuecomment-224807484)
+// (https://github.com/undal/undal/issues/7883#issuecomment-224807484)
 static void CoinSelection(benchmark::Bench& bench)
 {
     NodeContext node;
     auto chain = interfaces::MakeChain(node);
-    CWallet wallet(chain.get(), "", CreateMockableWalletDatabase());
+    CWallet wallet(chain.get(), "", CreateDummyWalletDatabase());
     std::vector<std::unique_ptr<CWalletTx>> wtxs;
     LOCK(wallet.cs_wallet);
 
@@ -84,15 +69,15 @@ static void CoinSelection(benchmark::Bench& bench)
         /*change_output_size=*/ 34,
         /*change_spend_size=*/ 148,
         /*min_change_target=*/ CHANGE_LOWER,
-        /*effective_feerate=*/ CFeeRate(20'000),
-        /*long_term_feerate=*/ CFeeRate(10'000),
-        /*discard_feerate=*/ CFeeRate(3000),
+        /*effective_feerate=*/ CFeeRate(0),
+        /*long_term_feerate=*/ CFeeRate(0),
+        /*discard_feerate=*/ CFeeRate(0),
         /*tx_noinputs_size=*/ 0,
         /*avoid_partial=*/ false,
     };
     auto group = wallet::GroupOutputs(wallet, available_coins, coin_selection_params, {{filter_standard}})[filter_standard];
     bench.run([&] {
-        auto result = AttemptSelection(wallet.chain(), 1002.99 * COIN, group, coin_selection_params, /*allow_mixed_output_types=*/true);
+        auto result = AttemptSelection(1003 * COIN, group, coin_selection_params, /*allow_mixed_output_types=*/true);
         assert(result);
         assert(result->GetSelectedValue() == 1003 * COIN);
         assert(result->GetInputSet().size() == 2);
@@ -130,7 +115,7 @@ static void BnBExhaustion(benchmark::Bench& bench)
     bench.run([&] {
         // Benchmark
         CAmount target = make_hard_case(17, utxo_pool);
-        SelectCoinsBnB(utxo_pool, target, 0, MAX_STANDARD_TX_WEIGHT); // Should exhaust
+        SelectCoinsBnB(utxo_pool, target, 0); // Should exhaust
 
         // Cleanup
         utxo_pool.clear();

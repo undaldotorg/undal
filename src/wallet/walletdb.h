@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_WALLET_WALLETDB_H
-#define BITCOIN_WALLET_WALLETDB_H
+#ifndef UNDAL_WALLET_WALLETDB_H
+#define UNDAL_WALLET_WALLETDB_H
 
 #include <script/sign.h>
 #include <wallet/db.h>
@@ -41,21 +41,19 @@ struct WalletContext;
 
 static const bool DEFAULT_FLUSHWALLET = true;
 
-/** Error statuses for the wallet database.
- * Values are in order of severity. When multiple errors occur, the most severe (highest value) will be returned.
- */
-enum class DBErrors : int
+/** Error statuses for the wallet database */
+enum class DBErrors
 {
-    LOAD_OK = 0,
-    NEED_RESCAN = 1,
-    NEED_REWRITE = 2,
-    EXTERNAL_SIGNER_SUPPORT_REQUIRED = 3,
-    NONCRITICAL_ERROR = 4,
-    TOO_NEW = 5,
-    UNKNOWN_DESCRIPTOR = 6,
-    LOAD_FAIL = 7,
-    UNEXPECTED_LEGACY_ENTRY = 8,
-    CORRUPT = 9,
+    LOAD_OK,
+    CORRUPT,
+    NONCRITICAL_ERROR,
+    TOO_NEW,
+    EXTERNAL_SIGNER_SUPPORT_REQUIRED,
+    LOAD_FAIL,
+    NEED_REWRITE,
+    NEED_RESCAN,
+    UNKNOWN_DESCRIPTOR,
+    UNEXPECTED_LEGACY_ENTRY
 };
 
 namespace DBKeys {
@@ -247,9 +245,6 @@ public:
     bool WriteBestBlock(const CBlockLocator& locator);
     bool ReadBestBlock(CBlockLocator& locator);
 
-    // Returns true if wallet stores encryption keys
-    bool IsEncrypted();
-
     bool WriteOrderPosNext(int64_t nOrderPosNext);
 
     bool ReadPool(int64_t nPool, CKeyPool& keypool);
@@ -269,15 +264,19 @@ public:
     bool WriteLockedUTXO(const COutPoint& output);
     bool EraseLockedUTXO(const COutPoint& output);
 
-    bool WriteAddressPreviouslySpent(const CTxDestination& dest, bool previously_spent);
-    bool WriteAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& receive_request);
-    bool EraseAddressReceiveRequest(const CTxDestination& dest, const std::string& id);
-    bool EraseAddressData(const CTxDestination& dest);
+    /// Write destination data key,value tuple to database
+    bool WriteDestData(const std::string &address, const std::string &key, const std::string &value);
+    /// Erase destination data tuple from wallet database
+    bool EraseDestData(const std::string &address, const std::string &key);
 
     bool WriteActiveScriptPubKeyMan(uint8_t type, const uint256& id, bool internal);
     bool EraseActiveScriptPubKeyMan(uint8_t type, bool internal);
 
     DBErrors LoadWallet(CWallet* pwallet);
+    DBErrors FindWalletTxHashes(std::vector<uint256>& tx_hashes);
+    DBErrors ZapSelectTx(std::vector<uint256>& vHashIn, std::vector<uint256>& vHashOut);
+    /* Function to determine if a certain KV/key-type is a key (cryptographical key) type */
+    static bool IsKeyType(const std::string& strType);
 
     //! write the hdchain model (external chain child index counter)
     bool WriteHDChain(const CHDChain& chain);
@@ -297,27 +296,21 @@ private:
     WalletDatabase& m_database;
 };
 
-/**
- * Executes the provided function 'func' within a database transaction context.
- *
- * This function ensures that all db modifications performed within 'func()' are
- * atomically committed to the db at the end of the process. And, in case of a
- * failure during execution, all performed changes are rolled back.
- *
- * @param database The db connection instance to perform the transaction on.
- * @param process_desc A description of the process being executed, used for logging purposes in the event of a failure.
- * @param func The function to be executed within the db txn context. It returns a boolean indicating whether to commit or roll back the txn.
- * @return true if the db txn executed successfully, false otherwise.
- */
-bool RunWithinTxn(WalletDatabase& database, std::string_view process_desc, const std::function<bool(WalletBatch&)>& func);
-
 //! Compacts BDB state so that wallet.dat is self-contained (if there are changes)
 void MaybeCompactWalletDB(WalletContext& context);
 
-bool LoadKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
-bool LoadCryptedKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
-bool LoadEncryptionKey(CWallet* pwallet, DataStream& ssKey, DataStream& ssValue, std::string& strErr);
-bool LoadHDChain(CWallet* pwallet, DataStream& ssValue, std::string& strErr);
+//! Callback for filtering key types to deserialize in ReadKeyValue
+using KeyFilterFn = std::function<bool(const std::string&)>;
+
+//! Unserialize a given Key-Value pair and load it into the wallet
+bool ReadKeyValue(CWallet* pwallet, DataStream& ssKey, CDataStream& ssValue, std::string& strType, std::string& strErr, const KeyFilterFn& filter_fn = nullptr);
+
+/** Return object for accessing dummy database with no read/write capabilities. */
+std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase();
+
+/** Return object for accessing temporary in-memory database. */
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase(DatabaseOptions& options);
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase();
 } // namespace wallet
 
-#endif // BITCOIN_WALLET_WALLETDB_H
+#endif // UNDAL_WALLET_WALLETDB_H

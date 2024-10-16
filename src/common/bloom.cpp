@@ -8,7 +8,7 @@
 #include <primitives/transaction.h>
 #include <random.h>
 #include <script/script.h>
-#include <script/solver.h>
+#include <script/standard.h>
 #include <span.h>
 #include <streams.h>
 #include <util/fastrange.h>
@@ -98,8 +98,8 @@ bool CBloomFilter::IsRelevantAndUpdate(const CTransaction& tx)
     //  for finding tx when they appear in a block
     if (vData.empty()) // zero-size = "match-all" filter
         return true;
-    const Txid& hash = tx.GetHash();
-    if (contains(hash.ToUint256()))
+    const uint256& hash = tx.GetHash();
+    if (contains(hash))
         fFound = true;
 
     for (unsigned int i = 0; i < tx.vout.size(); i++)
@@ -239,7 +239,7 @@ bool CRollingBloomFilter::contains(Span<const unsigned char> vKey) const
 
 void CRollingBloomFilter::reset()
 {
-    nTweak = FastRandomContext().rand<unsigned int>();
+    nTweak = GetRand<unsigned int>();
     nEntriesThisGeneration = 0;
     nGeneration = 1;
     std::fill(data.begin(), data.end(), 0);

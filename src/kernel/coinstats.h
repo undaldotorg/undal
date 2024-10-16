@@ -2,11 +2,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_KERNEL_COINSTATS_H
-#define BITCOIN_KERNEL_COINSTATS_H
+#ifndef UNDAL_KERNEL_COINSTATS_H
+#define UNDAL_KERNEL_COINSTATS_H
 
 #include <consensus/amount.h>
-#include <crypto/muhash.h>
 #include <streams.h>
 #include <uint256.h>
 
@@ -73,10 +72,9 @@ struct CCoinsStats {
 
 uint64_t GetBogoSize(const CScript& script_pub_key);
 
-void ApplyCoinHash(MuHash3072& muhash, const COutPoint& outpoint, const Coin& coin);
-void RemoveCoinHash(MuHash3072& muhash, const COutPoint& outpoint, const Coin& coin);
+DataStream TxOutSer(const COutPoint& outpoint, const Coin& coin);
 
 std::optional<CCoinsStats> ComputeUTXOStats(CoinStatsHashType hash_type, CCoinsView* view, node::BlockManager& blockman, const std::function<void()>& interruption_point = {});
 } // namespace kernel
 
-#endif // BITCOIN_KERNEL_COINSTATS_H
+#endif // UNDAL_KERNEL_COINSTATS_H

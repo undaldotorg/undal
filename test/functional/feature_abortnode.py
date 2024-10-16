@@ -2,17 +2,20 @@
 # Copyright (c) 2019-2021 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test bitcoind aborts if can't disconnect a block.
+"""Test undald aborts if can't disconnect a block.
 
 - Start a single node and generate 3 blocks.
 - Delete the undo data.
 - Mine a fork that requires disconnecting the tip.
-- Verify that bitcoind AbortNode's.
+- Verify that undald AbortNode's.
 """
-from test_framework.test_framework import BitcoinTestFramework
+
+from test_framework.test_framework import UndalTestFramework
+from test_framework.util import get_datadir_path
+import os
 
 
-class AbortNodeTest(BitcoinTestFramework):
+class AbortNodeTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -23,9 +26,10 @@ class AbortNodeTest(BitcoinTestFramework):
 
     def run_test(self):
         self.generate(self.nodes[0], 3, sync_fun=self.no_op)
+        datadir = get_datadir_path(self.options.tmpdir, 0)
 
         # Deleting the undo file will result in reorg failure
-        (self.nodes[0].blocks_path / "rev00000.dat").unlink()
+        os.unlink(os.path.join(datadir, self.chain, 'blocks', 'rev00000.dat'))
 
         # Connecting to a node with a more work chain will trigger a reorg
         # attempt.
@@ -36,10 +40,10 @@ class AbortNodeTest(BitcoinTestFramework):
 
             # Check that node0 aborted
             self.log.info("Waiting for crash")
-            self.nodes[0].wait_until_stopped(timeout=5, expect_error=True, expected_stderr="Error: A fatal internal error occurred, see debug.log for details: Failed to disconnect block.")
+            self.nodes[0].wait_until_stopped(timeout=5)
         self.log.info("Node crashed - now verifying restart fails")
         self.nodes[0].assert_start_raises_init_error()
 
 
 if __name__ == '__main__':
-    AbortNodeTest(__file__).main()
+    AbortNodeTest().main()

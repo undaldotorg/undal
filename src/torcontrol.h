@@ -5,21 +5,25 @@
 /**
  * Functionality for communicating with Tor.
  */
-#ifndef BITCOIN_TORCONTROL_H
-#define BITCOIN_TORCONTROL_H
+#ifndef UNDAL_TORCONTROL_H
+#define UNDAL_TORCONTROL_H
 
 #include <netaddress.h>
 #include <util/fs.h>
 
-#include <event2/util.h>
+#include <boost/signals2/signal.hpp>
 
-#include <cstdint>
+#include <event2/bufferevent.h>
+#include <event2/event.h>
+
+#include <cstdlib>
 #include <deque>
 #include <functional>
 #include <string>
 #include <vector>
 
-constexpr int DEFAULT_TOR_CONTROL_PORT = 9051;
+class CService;
+
 extern const std::string DEFAULT_TOR_CONTROL;
 static const bool DEFAULT_LISTEN_ONION = true;
 
@@ -79,6 +83,8 @@ public:
      */
     bool Command(const std::string &cmd, const ReplyHandlerCB& reply_handler);
 
+    /** Response handlers for async replies */
+    boost::signals2::signal<void(TorControlConnection &,const TorControlReply &)> async_handler;
 private:
     /** Callback when ready for use */
     std::function<void(TorControlConnection&)> connected;
@@ -98,7 +104,7 @@ private:
     static void eventcb(struct bufferevent *bev, short what, void *ctx);
 };
 
-/****** Bitcoin specific TorController implementation ********/
+/****** Undal specific TorController implementation ********/
 
 /** Controller that connects to Tor control socket, authenticate, then create
  * and maintain an ephemeral onion service.
@@ -153,4 +159,4 @@ public:
     static void reconnect_cb(evutil_socket_t fd, short what, void *arg);
 };
 
-#endif // BITCOIN_TORCONTROL_H
+#endif // UNDAL_TORCONTROL_H

@@ -10,11 +10,11 @@ with or without a label and then its private key is imported with importprivkey
 with and without a label.
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.wallet_util import test_address
 
 
-class ImportWithLabel(BitcoinTestFramework):
+class ImportWithLabel(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser, descriptors=False)
 
@@ -125,4 +125,4 @@ class ImportWithLabel(BitcoinTestFramework):
 
 
 if __name__ == "__main__":
-    ImportWithLabel(__file__).main()
+    ImportWithLabel().main()

@@ -2,10 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_RPCCONSOLE_H
-#define BITCOIN_QT_RPCCONSOLE_H
+#ifndef UNDAL_QT_RPCCONSOLE_H
+#define UNDAL_QT_RPCCONSOLE_H
 
-#include <bitcoin-build-config.h> // IWYU pragma: keep
+#if defined(HAVE_CONFIG_H)
+#include <config/undal-config.h>
+#endif
 
 #include <qt/clientmodel.h>
 #include <qt/guiutil.h>
@@ -37,7 +39,7 @@ class QMenu;
 class QItemSelection;
 QT_END_NAMESPACE
 
-/** Local Bitcoin RPC console. */
+/** Local Undal RPC console. */
 class RPCConsole: public QWidget
 {
     Q_OBJECT
@@ -121,7 +123,7 @@ public Q_SLOTS:
     /** Set number of blocks and last block date shown in the UI */
     void setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, SyncType synctype);
     /** Set size (number of transactions and memory usage) of the mempool in the UI */
-    void setMempoolSize(long numberOfTxs, size_t dynUsage, size_t maxUsage);
+    void setMempoolSize(long numberOfTxs, size_t dynUsage);
     /** Go forward or back in history */
     void browseHistory(int offset);
     /** Scroll console view to end */
@@ -134,10 +136,6 @@ public Q_SLOTS:
     void unbanSelectedNode();
     /** set which tab has the focus (is visible) */
     void setTabFocus(enum TabTypes tabType);
-#ifdef ENABLE_WALLET
-    /** Set the current (ie - active) wallet */
-    void setCurrentWallet(WalletModel* const wallet_model);
-#endif // ENABLE_WALLET
 
 private:
     struct TranslatedStrings {
@@ -187,10 +185,8 @@ private:
         return time_at_event.count() ? GUIUtil::formatDurationStr(time_now - time_at_event) : tr("Never");
     }
 
-    void updateWindowTitle();
-
 private Q_SLOTS:
     void updateAlerts(const QString& warnings);
 };
 
-#endif // BITCOIN_QT_RPCCONSOLE_H
+#endif // UNDAL_QT_RPCCONSOLE_H

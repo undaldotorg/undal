@@ -3,8 +3,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_UTIL_TIME_H
-#define BITCOIN_UTIL_TIME_H
+#ifndef UNDAL_UTIL_TIME_H
+#define UNDAL_UTIL_TIME_H
+
+#include <compat/compat.h>
 
 #include <chrono> // IWYU pragma: export
 #include <cstdint>
@@ -69,6 +71,9 @@ using MillisecondsDouble = std::chrono::duration<double, std::chrono::millisecon
  */
 int64_t GetTime();
 
+/** Returns the system time (not mockable) */
+int64_t GetTimeMillis();
+
 /**
  * DEPRECATED
  * Use SetMockTime with chrono type
@@ -116,4 +121,7 @@ struct timeval MillisToTimeval(int64_t nTimeout);
  */
 struct timeval MillisToTimeval(std::chrono::milliseconds ms);
 
-#endif // BITCOIN_UTIL_TIME_H
+/** Sanity check epoch match normal Unix epoch */
+bool ChronoSanityCheck();
+
+#endif // UNDAL_UTIL_TIME_H

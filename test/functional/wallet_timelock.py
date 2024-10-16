@@ -3,11 +3,11 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
 
 
-class WalletLocktimeTest(BitcoinTestFramework):
+class WalletLocktimeTest(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -29,7 +29,7 @@ class WalletLocktimeTest(BitcoinTestFramework):
         self.log.info("Send to new address with locktime")
         node.send(
             outputs={address: 5},
-            locktime=mtp_tip - 1,
+            options={"locktime": mtp_tip - 1},
         )
         self.generate(node, 1)
 
@@ -50,4 +50,4 @@ class WalletLocktimeTest(BitcoinTestFramework):
 
 
 if __name__ == "__main__":
-    WalletLocktimeTest(__file__).main()
+    WalletLocktimeTest().main()

@@ -5,7 +5,7 @@
 """Test wallet group functionality."""
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.messages import (
     tx_from_hex,
 )
@@ -15,15 +15,13 @@ from test_framework.util import (
 )
 
 
-class WalletGroupTest(BitcoinTestFramework):
+class WalletGroupTest(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 5
-        # whitelist peers to speed up tx relay / mempool sync
-        self.noban_tx_relay = True
         self.extra_args = [
             [],
             [],
@@ -33,6 +31,7 @@ class WalletGroupTest(BitcoinTestFramework):
         ]
 
         for args in self.extra_args:
+            args.append("-whitelist=noban@127.0.0.1")   # whitelist peers to speed up tx relay / mempool sync
             args.append(f"-paytxfee={20 * 1e3 / 1e8}")  # apply feerate of 20 sats/vB across all nodes
 
         self.rpc_timeout = 480
@@ -42,6 +41,11 @@ class WalletGroupTest(BitcoinTestFramework):
 
     def run_test(self):
         self.log.info("Setting up")
+        # To take full use of immediate tx relay, all nodes need to be reachable
+        # via inbound peers, i.e. connect first to last to close the circle
+        # (the default test network topology looks like this:
+        #  node0 <-- node1 <-- node2 <-- node3 <-- node4 <-- node5)
+        self.connect_nodes(0, self.num_nodes - 1)
         # Mine some coins
         self.generate(self.nodes[0], COINBASE_MATURITY + 1)
 
@@ -96,7 +100,7 @@ class WalletGroupTest(BitcoinTestFramework):
         # - D ~0.3
         assert_approx(self.nodes[1].getbalance(), vexp=4.3, vspan=0.0001)
         assert_approx(self.nodes[2].getbalance(), vexp=4.3, vspan=0.0001)
-        # Sending 1.4 btc should pick one 1.0 + one more. For node #1,
+        # Sending 1.4 ubtc should pick one 1.0 + one more. For node #1,
         # this could be (A / B0 / C0) + (B1 / C1 / D). We ensure that it is
         # B0 + B1 or C0 + C1, because this avoids partial spends while not being
         # detrimental to transaction cost
@@ -182,4 +186,4 @@ class WalletGroupTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    WalletGroupTest(__file__).main()
+    WalletGroupTest().main()

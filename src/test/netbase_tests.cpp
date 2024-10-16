@@ -12,6 +12,7 @@
 #include <test/util/setup_common.h>
 #include <util/strencodings.h>
 #include <util/translation.h>
+#include <version.h>
 
 #include <string>
 
@@ -23,7 +24,16 @@ BOOST_FIXTURE_TEST_SUITE(netbase_tests, BasicTestingSetup)
 
 static CNetAddr ResolveIP(const std::string& ip)
 {
-    return LookupHost(ip, false).value_or(CNetAddr{});
+    CNetAddr addr;
+    LookupHost(ip, addr, false);
+    return addr;
+}
+
+static CSubNet ResolveSubNet(const std::string& subnet)
+{
+    CSubNet ret;
+    LookupSubNet(subnet, ret);
+    return ret;
 }
 
 static CNetAddr CreateInternal(const std::string& host)
@@ -84,20 +94,20 @@ bool static TestSplitHost(const std::string& test, const std::string& host, uint
 
 BOOST_AUTO_TEST_CASE(netbase_splithost)
 {
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org", "www.bitcoincore.org", 0));
-    BOOST_CHECK(TestSplitHost("[www.bitcoincore.org]", "www.bitcoincore.org", 0));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:80", "www.bitcoincore.org", 80));
-    BOOST_CHECK(TestSplitHost("[www.bitcoincore.org]:80", "www.bitcoincore.org", 80));
+    BOOST_CHECK(TestSplitHost("www.undalcore.org", "www.undalcore.org", 0));
+    BOOST_CHECK(TestSplitHost("[www.undalcore.org]", "www.undalcore.org", 0));
+    BOOST_CHECK(TestSplitHost("www.undalcore.org:80", "www.undalcore.org", 80));
+    BOOST_CHECK(TestSplitHost("[www.undalcore.org]:80", "www.undalcore.org", 80));
     BOOST_CHECK(TestSplitHost("127.0.0.1", "127.0.0.1", 0));
-    BOOST_CHECK(TestSplitHost("127.0.0.1:8333", "127.0.0.1", 8333));
+    BOOST_CHECK(TestSplitHost("127.0.0.1:19662", "127.0.0.1", 19662));
     BOOST_CHECK(TestSplitHost("[127.0.0.1]", "127.0.0.1", 0));
-    BOOST_CHECK(TestSplitHost("[127.0.0.1]:8333", "127.0.0.1", 8333));
+    BOOST_CHECK(TestSplitHost("[127.0.0.1]:19662", "127.0.0.1", 19662));
     BOOST_CHECK(TestSplitHost("::ffff:127.0.0.1", "::ffff:127.0.0.1", 0));
-    BOOST_CHECK(TestSplitHost("[::ffff:127.0.0.1]:8333", "::ffff:127.0.0.1", 8333));
-    BOOST_CHECK(TestSplitHost("[::]:8333", "::", 8333));
-    BOOST_CHECK(TestSplitHost("::8333", "::8333", 0));
-    BOOST_CHECK(TestSplitHost(":8333", "", 8333));
-    BOOST_CHECK(TestSplitHost("[]:8333", "", 8333));
+    BOOST_CHECK(TestSplitHost("[::ffff:127.0.0.1]:19662", "::ffff:127.0.0.1", 19662));
+    BOOST_CHECK(TestSplitHost("[::]:19662", "::", 19662));
+    BOOST_CHECK(TestSplitHost("::19662", "::19662", 0));
+    BOOST_CHECK(TestSplitHost(":19662", "", 19662));
+    BOOST_CHECK(TestSplitHost("[]:19662", "", 19662));
     BOOST_CHECK(TestSplitHost("", "", 0));
     BOOST_CHECK(TestSplitHost(":65535", "", 65535));
     BOOST_CHECK(TestSplitHost(":65536", ":65536", 0, false));
@@ -113,9 +123,9 @@ BOOST_AUTO_TEST_CASE(netbase_splithost)
     BOOST_CHECK(TestSplitHost("127.0.0.1:", "127.0.0.1:", 0, false));
     BOOST_CHECK(TestSplitHost("127.0.0.1:1/2", "127.0.0.1:1/2", 0, false));
     BOOST_CHECK(TestSplitHost("127.0.0.1:1E2", "127.0.0.1:1E2", 0, false));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:65536", "www.bitcoincore.org:65536", 0, false));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:0", "www.bitcoincore.org", 0, false));
-    BOOST_CHECK(TestSplitHost("www.bitcoincore.org:", "www.bitcoincore.org:", 0, false));
+    BOOST_CHECK(TestSplitHost("www.undalcore.org:65536", "www.undalcore.org:65536", 0, false));
+    BOOST_CHECK(TestSplitHost("www.undalcore.org:0", "www.undalcore.org", 0, false));
+    BOOST_CHECK(TestSplitHost("www.undalcore.org:", "www.undalcore.org:", 0, false));
 }
 
 bool static TestParse(std::string src, std::string canon)
@@ -127,10 +137,10 @@ bool static TestParse(std::string src, std::string canon)
 BOOST_AUTO_TEST_CASE(netbase_lookupnumeric)
 {
     BOOST_CHECK(TestParse("127.0.0.1", "127.0.0.1:65535"));
-    BOOST_CHECK(TestParse("127.0.0.1:8333", "127.0.0.1:8333"));
+    BOOST_CHECK(TestParse("127.0.0.1:19662", "127.0.0.1:19662"));
     BOOST_CHECK(TestParse("::ffff:127.0.0.1", "127.0.0.1:65535"));
     BOOST_CHECK(TestParse("::", "[::]:65535"));
-    BOOST_CHECK(TestParse("[::]:8333", "[::]:8333"));
+    BOOST_CHECK(TestParse("[::]:19662", "[::]:19662"));
     BOOST_CHECK(TestParse("[127.0.0.1]", "127.0.0.1:65535"));
     BOOST_CHECK(TestParse(":::", "[::]:0"));
 
@@ -151,49 +161,49 @@ BOOST_AUTO_TEST_CASE(embedded_test)
 BOOST_AUTO_TEST_CASE(subnet_test)
 {
 
-    BOOST_CHECK(LookupSubNet("1.2.3.0/24") == LookupSubNet("1.2.3.0/255.255.255.0"));
-    BOOST_CHECK(LookupSubNet("1.2.3.0/24") != LookupSubNet("1.2.4.0/255.255.255.0"));
-    BOOST_CHECK(LookupSubNet("1.2.3.0/24").Match(ResolveIP("1.2.3.4")));
-    BOOST_CHECK(!LookupSubNet("1.2.2.0/24").Match(ResolveIP("1.2.3.4")));
-    BOOST_CHECK(LookupSubNet("1.2.3.4").Match(ResolveIP("1.2.3.4")));
-    BOOST_CHECK(LookupSubNet("1.2.3.4/32").Match(ResolveIP("1.2.3.4")));
-    BOOST_CHECK(!LookupSubNet("1.2.3.4").Match(ResolveIP("5.6.7.8")));
-    BOOST_CHECK(!LookupSubNet("1.2.3.4/32").Match(ResolveIP("5.6.7.8")));
-    BOOST_CHECK(LookupSubNet("::ffff:127.0.0.1").Match(ResolveIP("127.0.0.1")));
-    BOOST_CHECK(LookupSubNet("1:2:3:4:5:6:7:8").Match(ResolveIP("1:2:3:4:5:6:7:8")));
-    BOOST_CHECK(!LookupSubNet("1:2:3:4:5:6:7:8").Match(ResolveIP("1:2:3:4:5:6:7:9")));
-    BOOST_CHECK(LookupSubNet("1:2:3:4:5:6:7:0/112").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
-    BOOST_CHECK(LookupSubNet("192.168.0.1/24").Match(ResolveIP("192.168.0.2")));
-    BOOST_CHECK(LookupSubNet("192.168.0.20/29").Match(ResolveIP("192.168.0.18")));
-    BOOST_CHECK(LookupSubNet("1.2.2.1/24").Match(ResolveIP("1.2.2.4")));
-    BOOST_CHECK(LookupSubNet("1.2.2.110/31").Match(ResolveIP("1.2.2.111")));
-    BOOST_CHECK(LookupSubNet("1.2.2.20/26").Match(ResolveIP("1.2.2.63")));
+    BOOST_CHECK(ResolveSubNet("1.2.3.0/24") == ResolveSubNet("1.2.3.0/255.255.255.0"));
+    BOOST_CHECK(ResolveSubNet("1.2.3.0/24") != ResolveSubNet("1.2.4.0/255.255.255.0"));
+    BOOST_CHECK(ResolveSubNet("1.2.3.0/24").Match(ResolveIP("1.2.3.4")));
+    BOOST_CHECK(!ResolveSubNet("1.2.2.0/24").Match(ResolveIP("1.2.3.4")));
+    BOOST_CHECK(ResolveSubNet("1.2.3.4").Match(ResolveIP("1.2.3.4")));
+    BOOST_CHECK(ResolveSubNet("1.2.3.4/32").Match(ResolveIP("1.2.3.4")));
+    BOOST_CHECK(!ResolveSubNet("1.2.3.4").Match(ResolveIP("5.6.7.8")));
+    BOOST_CHECK(!ResolveSubNet("1.2.3.4/32").Match(ResolveIP("5.6.7.8")));
+    BOOST_CHECK(ResolveSubNet("::ffff:127.0.0.1").Match(ResolveIP("127.0.0.1")));
+    BOOST_CHECK(ResolveSubNet("1:2:3:4:5:6:7:8").Match(ResolveIP("1:2:3:4:5:6:7:8")));
+    BOOST_CHECK(!ResolveSubNet("1:2:3:4:5:6:7:8").Match(ResolveIP("1:2:3:4:5:6:7:9")));
+    BOOST_CHECK(ResolveSubNet("1:2:3:4:5:6:7:0/112").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
+    BOOST_CHECK(ResolveSubNet("192.168.0.1/24").Match(ResolveIP("192.168.0.2")));
+    BOOST_CHECK(ResolveSubNet("192.168.0.20/29").Match(ResolveIP("192.168.0.18")));
+    BOOST_CHECK(ResolveSubNet("1.2.2.1/24").Match(ResolveIP("1.2.2.4")));
+    BOOST_CHECK(ResolveSubNet("1.2.2.110/31").Match(ResolveIP("1.2.2.111")));
+    BOOST_CHECK(ResolveSubNet("1.2.2.20/26").Match(ResolveIP("1.2.2.63")));
     // All-Matching IPv6 Matches arbitrary IPv6
-    BOOST_CHECK(LookupSubNet("::/0").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
+    BOOST_CHECK(ResolveSubNet("::/0").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
     // But not `::` or `0.0.0.0` because they are considered invalid addresses
-    BOOST_CHECK(!LookupSubNet("::/0").Match(ResolveIP("::")));
-    BOOST_CHECK(!LookupSubNet("::/0").Match(ResolveIP("0.0.0.0")));
+    BOOST_CHECK(!ResolveSubNet("::/0").Match(ResolveIP("::")));
+    BOOST_CHECK(!ResolveSubNet("::/0").Match(ResolveIP("0.0.0.0")));
     // Addresses from one network (IPv4) don't belong to subnets of another network (IPv6)
-    BOOST_CHECK(!LookupSubNet("::/0").Match(ResolveIP("1.2.3.4")));
+    BOOST_CHECK(!ResolveSubNet("::/0").Match(ResolveIP("1.2.3.4")));
     // All-Matching IPv4 does not Match IPv6
-    BOOST_CHECK(!LookupSubNet("0.0.0.0/0").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
+    BOOST_CHECK(!ResolveSubNet("0.0.0.0/0").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
     // Invalid subnets Match nothing (not even invalid addresses)
     BOOST_CHECK(!CSubNet().Match(ResolveIP("1.2.3.4")));
-    BOOST_CHECK(!LookupSubNet("").Match(ResolveIP("4.5.6.7")));
-    BOOST_CHECK(!LookupSubNet("bloop").Match(ResolveIP("0.0.0.0")));
-    BOOST_CHECK(!LookupSubNet("bloop").Match(ResolveIP("hab")));
+    BOOST_CHECK(!ResolveSubNet("").Match(ResolveIP("4.5.6.7")));
+    BOOST_CHECK(!ResolveSubNet("bloop").Match(ResolveIP("0.0.0.0")));
+    BOOST_CHECK(!ResolveSubNet("bloop").Match(ResolveIP("hab")));
     // Check valid/invalid
-    BOOST_CHECK(LookupSubNet("1.2.3.0/0").IsValid());
-    BOOST_CHECK(!LookupSubNet("1.2.3.0/-1").IsValid());
-    BOOST_CHECK(LookupSubNet("1.2.3.0/32").IsValid());
-    BOOST_CHECK(!LookupSubNet("1.2.3.0/33").IsValid());
-    BOOST_CHECK(!LookupSubNet("1.2.3.0/300").IsValid());
-    BOOST_CHECK(LookupSubNet("1:2:3:4:5:6:7:8/0").IsValid());
-    BOOST_CHECK(LookupSubNet("1:2:3:4:5:6:7:8/33").IsValid());
-    BOOST_CHECK(!LookupSubNet("1:2:3:4:5:6:7:8/-1").IsValid());
-    BOOST_CHECK(LookupSubNet("1:2:3:4:5:6:7:8/128").IsValid());
-    BOOST_CHECK(!LookupSubNet("1:2:3:4:5:6:7:8/129").IsValid());
-    BOOST_CHECK(!LookupSubNet("fuzzy").IsValid());
+    BOOST_CHECK(ResolveSubNet("1.2.3.0/0").IsValid());
+    BOOST_CHECK(!ResolveSubNet("1.2.3.0/-1").IsValid());
+    BOOST_CHECK(ResolveSubNet("1.2.3.0/32").IsValid());
+    BOOST_CHECK(!ResolveSubNet("1.2.3.0/33").IsValid());
+    BOOST_CHECK(!ResolveSubNet("1.2.3.0/300").IsValid());
+    BOOST_CHECK(ResolveSubNet("1:2:3:4:5:6:7:8/0").IsValid());
+    BOOST_CHECK(ResolveSubNet("1:2:3:4:5:6:7:8/33").IsValid());
+    BOOST_CHECK(!ResolveSubNet("1:2:3:4:5:6:7:8/-1").IsValid());
+    BOOST_CHECK(ResolveSubNet("1:2:3:4:5:6:7:8/128").IsValid());
+    BOOST_CHECK(!ResolveSubNet("1:2:3:4:5:6:7:8/129").IsValid());
+    BOOST_CHECK(!ResolveSubNet("fuzzy").IsValid());
 
     //CNetAddr constructor test
     BOOST_CHECK(CSubNet(ResolveIP("127.0.0.1")).IsValid());
@@ -239,85 +249,85 @@ BOOST_AUTO_TEST_CASE(subnet_test)
     BOOST_CHECK(!CSubNet(tor_addr, 200).IsValid());
     BOOST_CHECK(!CSubNet(tor_addr, ResolveIP("255.0.0.0")).IsValid());
 
-    subnet = LookupSubNet("1.2.3.4/255.255.255.255");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.255");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.4/32");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.254");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.254");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.4/31");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.252");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.252");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.4/30");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.248");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.248");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.0/29");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.240");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.240");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.0/28");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.224");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.224");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.0/27");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.192");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.192");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.0/26");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.128");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.128");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.0/25");
-    subnet = LookupSubNet("1.2.3.4/255.255.255.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.255.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.3.0/24");
-    subnet = LookupSubNet("1.2.3.4/255.255.254.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.254.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.2.0/23");
-    subnet = LookupSubNet("1.2.3.4/255.255.252.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.252.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/22");
-    subnet = LookupSubNet("1.2.3.4/255.255.248.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.248.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/21");
-    subnet = LookupSubNet("1.2.3.4/255.255.240.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.240.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/20");
-    subnet = LookupSubNet("1.2.3.4/255.255.224.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.224.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/19");
-    subnet = LookupSubNet("1.2.3.4/255.255.192.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.192.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/18");
-    subnet = LookupSubNet("1.2.3.4/255.255.128.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.128.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/17");
-    subnet = LookupSubNet("1.2.3.4/255.255.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/16");
-    subnet = LookupSubNet("1.2.3.4/255.254.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.254.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.2.0.0/15");
-    subnet = LookupSubNet("1.2.3.4/255.252.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.252.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.0.0.0/14");
-    subnet = LookupSubNet("1.2.3.4/255.248.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.248.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.0.0.0/13");
-    subnet = LookupSubNet("1.2.3.4/255.240.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.240.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.0.0.0/12");
-    subnet = LookupSubNet("1.2.3.4/255.224.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.224.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.0.0.0/11");
-    subnet = LookupSubNet("1.2.3.4/255.192.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.192.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.0.0.0/10");
-    subnet = LookupSubNet("1.2.3.4/255.128.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.128.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.0.0.0/9");
-    subnet = LookupSubNet("1.2.3.4/255.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/255.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1.0.0.0/8");
-    subnet = LookupSubNet("1.2.3.4/254.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/254.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/7");
-    subnet = LookupSubNet("1.2.3.4/252.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/252.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/6");
-    subnet = LookupSubNet("1.2.3.4/248.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/248.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/5");
-    subnet = LookupSubNet("1.2.3.4/240.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/240.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/4");
-    subnet = LookupSubNet("1.2.3.4/224.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/224.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/3");
-    subnet = LookupSubNet("1.2.3.4/192.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/192.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/2");
-    subnet = LookupSubNet("1.2.3.4/128.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/128.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/1");
-    subnet = LookupSubNet("1.2.3.4/0.0.0.0");
+    subnet = ResolveSubNet("1.2.3.4/0.0.0.0");
     BOOST_CHECK_EQUAL(subnet.ToString(), "0.0.0.0/0");
 
-    subnet = LookupSubNet("1:2:3:4:5:6:7:8/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
+    subnet = ResolveSubNet("1:2:3:4:5:6:7:8/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1:2:3:4:5:6:7:8/128");
-    subnet = LookupSubNet("1:2:3:4:5:6:7:8/ffff:0000:0000:0000:0000:0000:0000:0000");
+    subnet = ResolveSubNet("1:2:3:4:5:6:7:8/ffff:0000:0000:0000:0000:0000:0000:0000");
     BOOST_CHECK_EQUAL(subnet.ToString(), "1::/16");
-    subnet = LookupSubNet("1:2:3:4:5:6:7:8/0000:0000:0000:0000:0000:0000:0000:0000");
+    subnet = ResolveSubNet("1:2:3:4:5:6:7:8/0000:0000:0000:0000:0000:0000:0000:0000");
     BOOST_CHECK_EQUAL(subnet.ToString(), "::/0");
     // Invalid netmasks (with 1-bits after 0-bits)
-    subnet = LookupSubNet("1.2.3.4/255.255.232.0");
+    subnet = ResolveSubNet("1.2.3.4/255.255.232.0");
     BOOST_CHECK(!subnet.IsValid());
-    subnet = LookupSubNet("1.2.3.4/255.0.255.255");
+    subnet = ResolveSubNet("1.2.3.4/255.0.255.255");
     BOOST_CHECK(!subnet.IsValid());
-    subnet = LookupSubNet("1:2:3:4:5:6:7:8/ffff:ffff:ffff:fffe:ffff:ffff:ffff:ff0f");
+    subnet = ResolveSubNet("1:2:3:4:5:6:7:8/ffff:ffff:ffff:fffe:ffff:ffff:ffff:ff0f");
     BOOST_CHECK(!subnet.IsValid());
 }
 
@@ -366,7 +376,6 @@ BOOST_AUTO_TEST_CASE(netpermissions_test)
     bilingual_str error;
     NetWhitebindPermissions whitebindPermissions;
     NetWhitelistPermissions whitelistPermissions;
-    ConnectionDirection connection_direction;
 
     // Detect invalid white bind
     BOOST_CHECK(!NetWhitebindPermissions::TryParse("", whitebindPermissions, error));
@@ -436,33 +445,24 @@ BOOST_AUTO_TEST_CASE(netpermissions_test)
     BOOST_CHECK(NetWhitebindPermissions::TryParse(",,@1.2.3.4:32", whitebindPermissions, error));
     BOOST_CHECK_EQUAL(whitebindPermissions.m_flags, NetPermissionFlags::None);
 
-    BOOST_CHECK(!NetWhitebindPermissions::TryParse("out,forcerelay@1.2.3.4:32", whitebindPermissions, error));
-    BOOST_CHECK(error.original.find("whitebind may only be used for incoming connections (\"out\" was passed)") != std::string::npos);
-
     // Detect invalid flag
     BOOST_CHECK(!NetWhitebindPermissions::TryParse("bloom,forcerelay,oopsie@1.2.3.4:32", whitebindPermissions, error));
     BOOST_CHECK(error.original.find("Invalid P2P permission") != std::string::npos);
 
     // Check netmask error
-    BOOST_CHECK(!NetWhitelistPermissions::TryParse("bloom,forcerelay,noban@1.2.3.4:32", whitelistPermissions, connection_direction, error));
+    BOOST_CHECK(!NetWhitelistPermissions::TryParse("bloom,forcerelay,noban@1.2.3.4:32", whitelistPermissions, error));
     BOOST_CHECK(error.original.find("Invalid netmask specified in -whitelist") != std::string::npos);
 
     // Happy path for whitelist parsing
-    BOOST_CHECK(NetWhitelistPermissions::TryParse("noban@1.2.3.4", whitelistPermissions, connection_direction, error));
+    BOOST_CHECK(NetWhitelistPermissions::TryParse("noban@1.2.3.4", whitelistPermissions, error));
     BOOST_CHECK_EQUAL(whitelistPermissions.m_flags, NetPermissionFlags::NoBan);
     BOOST_CHECK(NetPermissions::HasFlag(whitelistPermissions.m_flags, NetPermissionFlags::NoBan));
 
-    BOOST_CHECK(NetWhitelistPermissions::TryParse("bloom,forcerelay,noban,relay@1.2.3.4/32", whitelistPermissions, connection_direction, error));
+    BOOST_CHECK(NetWhitelistPermissions::TryParse("bloom,forcerelay,noban,relay@1.2.3.4/32", whitelistPermissions, error));
     BOOST_CHECK_EQUAL(whitelistPermissions.m_flags, NetPermissionFlags::BloomFilter | NetPermissionFlags::ForceRelay | NetPermissionFlags::NoBan | NetPermissionFlags::Relay);
     BOOST_CHECK(error.empty());
     BOOST_CHECK_EQUAL(whitelistPermissions.m_subnet.ToString(), "1.2.3.4/32");
-    BOOST_CHECK(NetWhitelistPermissions::TryParse("bloom,forcerelay,noban,relay,mempool@1.2.3.4/32", whitelistPermissions, connection_direction, error));
-    BOOST_CHECK(NetWhitelistPermissions::TryParse("in,relay@1.2.3.4", whitelistPermissions, connection_direction, error));
-    BOOST_CHECK_EQUAL(connection_direction, ConnectionDirection::In);
-    BOOST_CHECK(NetWhitelistPermissions::TryParse("out,bloom@1.2.3.4", whitelistPermissions, connection_direction, error));
-    BOOST_CHECK_EQUAL(connection_direction, ConnectionDirection::Out);
-    BOOST_CHECK(NetWhitelistPermissions::TryParse("in,out,bloom@1.2.3.4", whitelistPermissions, connection_direction, error));
-    BOOST_CHECK_EQUAL(connection_direction, ConnectionDirection::Both);
+    BOOST_CHECK(NetWhitelistPermissions::TryParse("bloom,forcerelay,noban,relay,mempool@1.2.3.4/32", whitelistPermissions, error));
 
     const auto strings = NetPermissions::ToStrings(NetPermissionFlags::All);
     BOOST_CHECK_EQUAL(strings.size(), 7U);
@@ -477,19 +477,20 @@ BOOST_AUTO_TEST_CASE(netpermissions_test)
 
 BOOST_AUTO_TEST_CASE(netbase_dont_resolve_strings_with_embedded_nul_characters)
 {
-    BOOST_CHECK(LookupHost("127.0.0.1"s, false).has_value());
-    BOOST_CHECK(!LookupHost("127.0.0.1\0"s, false).has_value());
-    BOOST_CHECK(!LookupHost("127.0.0.1\0example.com"s, false).has_value());
-    BOOST_CHECK(!LookupHost("127.0.0.1\0example.com\0"s, false).has_value());
-
-    BOOST_CHECK(LookupSubNet("1.2.3.0/24"s).IsValid());
-    BOOST_CHECK(!LookupSubNet("1.2.3.0/24\0"s).IsValid());
-    BOOST_CHECK(!LookupSubNet("1.2.3.0/24\0example.com"s).IsValid());
-    BOOST_CHECK(!LookupSubNet("1.2.3.0/24\0example.com\0"s).IsValid());
-    BOOST_CHECK(LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion"s).IsValid());
-    BOOST_CHECK(!LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion\0"s).IsValid());
-    BOOST_CHECK(!LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion\0example.com"s).IsValid());
-    BOOST_CHECK(!LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion\0example.com\0"s).IsValid());
+    CNetAddr addr;
+    BOOST_CHECK(LookupHost("127.0.0.1"s, addr, false));
+    BOOST_CHECK(!LookupHost("127.0.0.1\0"s, addr, false));
+    BOOST_CHECK(!LookupHost("127.0.0.1\0example.com"s, addr, false));
+    BOOST_CHECK(!LookupHost("127.0.0.1\0example.com\0"s, addr, false));
+    CSubNet ret;
+    BOOST_CHECK(LookupSubNet("1.2.3.0/24"s, ret));
+    BOOST_CHECK(!LookupSubNet("1.2.3.0/24\0"s, ret));
+    BOOST_CHECK(!LookupSubNet("1.2.3.0/24\0example.com"s, ret));
+    BOOST_CHECK(!LookupSubNet("1.2.3.0/24\0example.com\0"s, ret));
+    BOOST_CHECK(LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion"s, ret));
+    BOOST_CHECK(!LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion\0"s, ret));
+    BOOST_CHECK(!LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion\0example.com"s, ret));
+    BOOST_CHECK(!LookupSubNet("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion\0example.com\0"s, ret));
 }
 
 // Since CNetAddr (un)ser is tested separately in net_tests.cpp here we only
@@ -561,35 +562,35 @@ static constexpr const char* stream_addrv2_hex =
 
 BOOST_AUTO_TEST_CASE(caddress_serialize_v1)
 {
-    DataStream s{};
+    CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
 
-    s << CAddress::V1_NETWORK(fixture_addresses);
+    s << fixture_addresses;
     BOOST_CHECK_EQUAL(HexStr(s), stream_addrv1_hex);
 }
 
 BOOST_AUTO_TEST_CASE(caddress_unserialize_v1)
 {
-    DataStream s{ParseHex(stream_addrv1_hex)};
+    CDataStream s(ParseHex(stream_addrv1_hex), SER_NETWORK, PROTOCOL_VERSION);
     std::vector<CAddress> addresses_unserialized;
 
-    s >> CAddress::V1_NETWORK(addresses_unserialized);
+    s >> addresses_unserialized;
     BOOST_CHECK(fixture_addresses == addresses_unserialized);
 }
 
 BOOST_AUTO_TEST_CASE(caddress_serialize_v2)
 {
-    DataStream s{};
+    CDataStream s(SER_NETWORK, PROTOCOL_VERSION | ADDRV2_FORMAT);
 
-    s << CAddress::V2_NETWORK(fixture_addresses);
+    s << fixture_addresses;
     BOOST_CHECK_EQUAL(HexStr(s), stream_addrv2_hex);
 }
 
 BOOST_AUTO_TEST_CASE(caddress_unserialize_v2)
 {
-    DataStream s{ParseHex(stream_addrv2_hex)};
+    CDataStream s(ParseHex(stream_addrv2_hex), SER_NETWORK, PROTOCOL_VERSION | ADDRV2_FORMAT);
     std::vector<CAddress> addresses_unserialized;
 
-    s >> CAddress::V2_NETWORK(addresses_unserialized);
+    s >> addresses_unserialized;
     BOOST_CHECK(fixture_addresses == addresses_unserialized);
 }
 
@@ -601,7 +602,7 @@ BOOST_AUTO_TEST_CASE(isbadport)
 
     BOOST_CHECK(!IsBadPort(80));
     BOOST_CHECK(!IsBadPort(443));
-    BOOST_CHECK(!IsBadPort(8333));
+    BOOST_CHECK(!IsBadPort(19662));
 
     // Check all ports, there must be 80 bad ports in total.
     size_t total_bad_ports{0};

@@ -13,14 +13,14 @@
 from decimal import Decimal
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
 
 
-class AbandonConflictTest(BitcoinTestFramework):
+class AbandonConflictTest(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -28,7 +28,8 @@ class AbandonConflictTest(BitcoinTestFramework):
         self.num_nodes = 2
         self.extra_args = [["-minrelaytxfee=0.00001"], []]
         # whitelist peers to speed up tx relay / mempool sync
-        self.noban_tx_relay = True
+        for args in self.extra_args:
+            args.append("-whitelist=noban@127.0.0.1")
 
     def skip_test_if_missing_module(self):
         self.skip_if_no_wallet()
@@ -59,13 +60,13 @@ class AbandonConflictTest(BitcoinTestFramework):
         # Disconnect nodes so node0's transactions don't get into node1's mempool
         self.disconnect_nodes(0, 1)
 
-        # Identify the 10btc outputs
+        # Identify the 10ubtc outputs
         nA = next(tx_out["vout"] for tx_out in alice.gettransaction(txA)["details"] if tx_out["amount"] == Decimal("10"))
         nB = next(tx_out["vout"] for tx_out in alice.gettransaction(txB)["details"] if tx_out["amount"] == Decimal("10"))
         nC = next(tx_out["vout"] for tx_out in alice.gettransaction(txC)["details"] if tx_out["amount"] == Decimal("10"))
 
         inputs = []
-        # spend 10btc outputs from txA and txB
+        # spend 10ubtc outputs from txA and txB
         inputs.append({"txid": txA, "vout": nA})
         inputs.append({"txid": txB, "vout": nB})
         outputs = {}
@@ -75,7 +76,7 @@ class AbandonConflictTest(BitcoinTestFramework):
         signed = alice.signrawtransactionwithwallet(alice.createrawtransaction(inputs, outputs))
         txAB1 = self.nodes[0].sendrawtransaction(signed["hex"])
 
-        # Identify the 14.99998btc output
+        # Identify the 14.99998ubtc output
         nAB = next(tx_out["vout"] for tx_out in alice.gettransaction(txAB1)["details"] if tx_out["amount"] == Decimal("14.99998"))
 
         #Create a child tx spending AB1 and C
@@ -224,21 +225,21 @@ class AbandonConflictTest(BitcoinTestFramework):
         assert_equal(double_spend_txid, double_spend['txid'])
         assert_equal(double_spend["walletconflicts"], [txAB1])
 
-        # Verify that B and C's 10 BTC outputs are available for spending again because AB1 is now conflicted
-        assert_equal(alice.gettransaction(txAB1)["confirmations"], -1)
+        # Verify that B and C's 10 UBTC outputs are available for spending again because AB1 is now conflicted
         newbalance = alice.getbalance()
         assert_equal(newbalance, balance + Decimal("20"))
         balance = newbalance
 
-        # Invalidate the block with the double spend. B & C's 10 BTC outputs should no longer be available
-        blk = self.nodes[0].getbestblockhash()
-        # mine 10 blocks so that when the blk is invalidated, the transactions are not
-        # returned to the mempool
-        self.generate(self.nodes[1], 10)
-        self.nodes[0].invalidateblock(blk)
-        assert_equal(alice.gettransaction(txAB1)["confirmations"], 0)
+        # There is currently a minor bug around this and so this test doesn't work.  See Issue #7315
+        # Invalidate the block with the double spend and B's 10 UBTC output should no longer be available
+        # Don't think C's should either
+        self.nodes[0].invalidateblock(self.nodes[0].getbestblockhash())
         newbalance = alice.getbalance()
-        assert_equal(newbalance, balance - Decimal("20"))
+        #assert_equal(newbalance, balance - Decimal("10"))
+        self.log.info("If balance has not declined after invalidateblock then out of mempool wallet tx which is no longer")
+        self.log.info("conflicted has not resumed causing its inputs to be seen as spent.  See Issue #7315")
+        assert_equal(balance, newbalance)
+
 
 if __name__ == '__main__':
-    AbandonConflictTest(__file__).main()
+    AbandonConflictTest().main()

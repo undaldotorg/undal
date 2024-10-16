@@ -1,13 +1,9 @@
-// Copyright (c) 2020-present The Bitcoin Core developers
+// Copyright (c) 2020-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <blockfilter.h>
 #include <clientversion.h>
-#include <common/args.h>
-#include <common/messages.h>
-#include <common/settings.h>
-#include <common/system.h>
 #include <common/url.h>
 #include <netbase.h>
 #include <outputtype.h>
@@ -22,8 +18,12 @@
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
+#include <util/error.h>
+#include <util/fees.h>
+#include <util/settings.h>
 #include <util/strencodings.h>
 #include <util/string.h>
+#include <util/system.h>
 #include <util/translation.h>
 
 #include <cassert>
@@ -35,16 +35,6 @@
 #include <vector>
 
 enum class FeeEstimateMode;
-
-using common::AmountErrMsg;
-using common::AmountHighWarn;
-using common::FeeModeFromString;
-using common::ResolveErrMsg;
-using util::ContainsNoNUL;
-using util::Join;
-using util::RemovePrefix;
-using util::SplitString;
-using util::TrimString;
 
 FUZZ_TARGET(string)
 {
@@ -72,9 +62,13 @@ FUZZ_TARGET(string)
     (void)IsDeprecatedRPCEnabled(random_string_1);
     (void)Join(random_string_vector, random_string_1);
     (void)JSONRPCError(fuzzed_data_provider.ConsumeIntegral<int>(), random_string_1);
-    const common::Settings settings;
+    const util::Settings settings;
     (void)OnlyHasDefaultSectionSetting(settings, random_string_1, random_string_2);
     (void)ParseNetwork(random_string_1);
+    try {
+        (void)ParseNonRFCJSONValue(random_string_1);
+    } catch (const std::runtime_error&) {
+    }
     (void)ParseOutputType(random_string_1);
     (void)RemovePrefix(random_string_1, random_string_2);
     (void)ResolveErrMsg(random_string_1, random_string_2);
@@ -99,8 +93,9 @@ FUZZ_TARGET(string)
     (void)ToUpper(random_string_1);
     (void)TrimString(random_string_1);
     (void)TrimString(random_string_1, random_string_2);
-    (void)UrlDecode(random_string_1);
+    (void)urlDecode(random_string_1);
     (void)ContainsNoNUL(random_string_1);
+    (void)_(random_string_1.c_str());
     try {
         throw scriptnum_error{random_string_1};
     } catch (const std::runtime_error&) {

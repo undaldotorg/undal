@@ -2,17 +2,15 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_RPC_RAWTRANSACTION_UTIL_H
-#define BITCOIN_RPC_RAWTRANSACTION_UTIL_H
+#ifndef UNDAL_RPC_RAWTRANSACTION_UTIL_H
+#define UNDAL_RPC_RAWTRANSACTION_UTIL_H
 
-#include <addresstype.h>
-#include <consensus/amount.h>
 #include <map>
 #include <string>
 #include <optional>
 
 struct bilingual_str;
-struct FlatSigningProvider;
+class FillableSigningProvider;
 class UniValue;
 struct CMutableTransaction;
 class Coin;
@@ -38,21 +36,16 @@ void SignTransactionResultToJSON(CMutableTransaction& mtx, bool complete, const 
   * @param  keystore      A pointer to the temporary keystore if there is one
   * @param  coins         Map of unspent outputs - coins in mempool and current chain UTXO set, may be extended by previous txns outputs after call
   */
-void ParsePrevouts(const UniValue& prevTxsUnival, FlatSigningProvider* keystore, std::map<COutPoint, Coin>& coins);
+void ParsePrevouts(const UniValue& prevTxsUnival, FillableSigningProvider* keystore, std::map<COutPoint, Coin>& coins);
+
 
 /** Normalize univalue-represented inputs and add them to the transaction */
 void AddInputs(CMutableTransaction& rawTx, const UniValue& inputs_in, bool rbf);
 
-/** Normalize univalue-represented outputs */
-UniValue NormalizeOutputs(const UniValue& outputs_in);
-
-/** Parse normalized outputs into destination, amount tuples */
-std::vector<std::pair<CTxDestination, CAmount>> ParseOutputs(const UniValue& outputs);
-
-/** Normalize, parse, and add outputs to the transaction */
+/** Normalize univalue-represented outputs and add them to the transaction */
 void AddOutputs(CMutableTransaction& rawTx, const UniValue& outputs_in);
 
 /** Create a transaction from univalue parameters */
 CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, std::optional<bool> rbf);
 
-#endif // BITCOIN_RPC_RAWTRANSACTION_UTIL_H
+#endif // UNDAL_RPC_RAWTRANSACTION_UTIL_H

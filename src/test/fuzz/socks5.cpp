@@ -14,11 +14,11 @@
 #include <string>
 #include <vector>
 
-extern std::chrono::milliseconds g_socks5_recv_timeout;
-
 namespace {
-decltype(g_socks5_recv_timeout) default_socks5_recv_timeout;
+int default_socks5_recv_timeout;
 };
+
+extern int g_socks5_recv_timeout;
 
 void initialize_socks5()
 {
@@ -26,23 +26,21 @@ void initialize_socks5()
     default_socks5_recv_timeout = g_socks5_recv_timeout;
 }
 
-FUZZ_TARGET(socks5, .init = initialize_socks5)
+FUZZ_TARGET_INIT(socks5, initialize_socks5)
 {
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
     ProxyCredentials proxy_credentials;
     proxy_credentials.username = fuzzed_data_provider.ConsumeRandomLengthString(512);
     proxy_credentials.password = fuzzed_data_provider.ConsumeRandomLengthString(512);
-    if (fuzzed_data_provider.ConsumeBool()) {
-        g_socks5_interrupt();
-    }
+    InterruptSocks5(fuzzed_data_provider.ConsumeBool());
     // Set FUZZED_SOCKET_FAKE_LATENCY=1 to exercise recv timeout code paths. This
     // will slow down fuzzing.
-    g_socks5_recv_timeout = (fuzzed_data_provider.ConsumeBool() && std::getenv("FUZZED_SOCKET_FAKE_LATENCY") != nullptr) ? 1ms : default_socks5_recv_timeout;
+    g_socks5_recv_timeout = (fuzzed_data_provider.ConsumeBool() && std::getenv("FUZZED_SOCKET_FAKE_LATENCY") != nullptr) ? 1 : default_socks5_recv_timeout;
     FuzzedSock fuzzed_sock = ConsumeSock(fuzzed_data_provider);
     // This Socks5(...) fuzzing harness would have caught CVE-2017-18350 within
     // a few seconds of fuzzing.
-    auto str_dest = fuzzed_data_provider.ConsumeRandomLengthString(512);
-    auto port = fuzzed_data_provider.ConsumeIntegral<uint16_t>();
-    auto* auth = fuzzed_data_provider.ConsumeBool() ? &proxy_credentials : nullptr;
-    (void)Socks5(str_dest, port, auth, fuzzed_sock);
+    (void)Socks5(fuzzed_data_provider.ConsumeRandomLengthString(512),
+                 fuzzed_data_provider.ConsumeIntegral<uint16_t>(),
+                 fuzzed_data_provider.ConsumeBool() ? &proxy_credentials : nullptr,
+                 fuzzed_sock);
 }

@@ -20,13 +20,13 @@ from test_framework.p2p import (
     msg_getheaders,
     p2p_lock,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
 )
 
 
-class P2PFingerprintTest(BitcoinTestFramework):
+class P2PFingerprintTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -130,4 +130,4 @@ class P2PFingerprintTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    P2PFingerprintTest(__file__).main()
+    P2PFingerprintTest().main()

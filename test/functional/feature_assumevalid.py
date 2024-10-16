@@ -5,7 +5,7 @@
 """Test logic for skipping signature validation on old blocks.
 
 Test logic for skipping signature validation on blocks which we've assumed
-valid (https://github.com/bitcoin/bitcoin/pull/9484)
+valid (https://github.com/undal/undal/pull/9484)
 
 We build a chain that includes and invalid signature for one of the
 transactions:
@@ -35,6 +35,7 @@ from test_framework.blocktools import (
     create_block,
     create_coinbase,
 )
+from test_framework.key import ECKey
 from test_framework.messages import (
     CBlockHeader,
     COutPoint,
@@ -45,13 +46,9 @@ from test_framework.messages import (
     msg_headers,
 )
 from test_framework.p2p import P2PInterface
-from test_framework.script import (
-    CScript,
-    OP_TRUE,
-)
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.script import (CScript, OP_TRUE)
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
-from test_framework.wallet_util import generate_keypair
 
 
 class BaseNode(P2PInterface):
@@ -61,7 +58,7 @@ class BaseNode(P2PInterface):
         self.send_message(headers_message)
 
 
-class AssumeValidTest(BitcoinTestFramework):
+class AssumeValidTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
@@ -93,7 +90,9 @@ class AssumeValidTest(BitcoinTestFramework):
         self.blocks = []
 
         # Get a pubkey for the coinbase TXO
-        _, coinbase_pubkey = generate_keypair()
+        coinbase_key = ECKey()
+        coinbase_key.generate()
+        coinbase_pubkey = coinbase_key.get_pubkey().get_bytes()
 
         # Create the first block with a coinbase output to our key
         height = 1
@@ -139,8 +138,8 @@ class AssumeValidTest(BitcoinTestFramework):
             height += 1
 
         # Start node1 and node2 with assumevalid so they accept a block with a bad signature.
-        self.start_node(1, extra_args=["-assumevalid=" + block102.hash])
-        self.start_node(2, extra_args=["-assumevalid=" + block102.hash])
+        self.start_node(1, extra_args=["-assumevalid=" + hex(block102.sha256)])
+        self.start_node(2, extra_args=["-assumevalid=" + hex(block102.sha256)])
 
         p2p0 = self.nodes[0].add_p2p_connection(BaseNode())
         p2p0.send_header_for_blocks(self.blocks[0:2000])
@@ -159,7 +158,7 @@ class AssumeValidTest(BitcoinTestFramework):
         for i in range(2202):
             p2p1.send_message(msg_block(self.blocks[i]))
         # Syncing 2200 blocks can take a while on slow systems. Give it plenty of time to sync.
-        p2p1.sync_with_ping(timeout=960)
+        p2p1.sync_with_ping(960)
         assert_equal(self.nodes[1].getblock(self.nodes[1].getbestblockhash())['height'], 2202)
 
         p2p2 = self.nodes[2].add_p2p_connection(BaseNode())
@@ -172,4 +171,4 @@ class AssumeValidTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    AssumeValidTest(__file__).main()
+    AssumeValidTest().main()

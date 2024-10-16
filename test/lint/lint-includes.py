@@ -14,29 +14,24 @@ import sys
 
 from subprocess import check_output, CalledProcessError
 
-from lint_ignore_dirs import SHARED_EXCLUDED_SUBTREES
 
-
-EXCLUDED_DIRS = ["contrib/devtools/bitcoin-tidy/",
-                ] + SHARED_EXCLUDED_SUBTREES
+EXCLUDED_DIRS = ["src/leveldb/",
+                 "src/crc32c/",
+                 "src/secp256k1/",
+                 "src/minisketch/",
+                ]
 
 EXPECTED_BOOST_INCLUDES = ["boost/date_time/posix_time/posix_time.hpp",
-                           "boost/multi_index/detail/hash_index_iterator.hpp",
                            "boost/multi_index/hashed_index.hpp",
-                           "boost/multi_index/identity.hpp",
-                           "boost/multi_index/indexed_by.hpp",
                            "boost/multi_index/ordered_index.hpp",
                            "boost/multi_index/sequenced_index.hpp",
-                           "boost/multi_index/tag.hpp",
                            "boost/multi_index_container.hpp",
-                           "boost/operators.hpp",
+                           "boost/process.hpp",
                            "boost/signals2/connection.hpp",
                            "boost/signals2/optional_last_value.hpp",
                            "boost/signals2/signal.hpp",
                            "boost/test/included/unit_test.hpp",
-                           "boost/test/unit_test.hpp",
-                           "boost/tuple/tuple.hpp",
-                          ]
+                           "boost/test/unit_test.hpp"]
 
 
 def get_toplevel():

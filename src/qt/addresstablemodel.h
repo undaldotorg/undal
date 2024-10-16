@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_ADDRESSTABLEMODEL_H
-#define BITCOIN_QT_ADDRESSTABLEMODEL_H
+#ifndef UNDAL_QT_ADDRESSTABLEMODEL_H
+#define UNDAL_QT_ADDRESSTABLEMODEL_H
 
 #include <optional>
 
@@ -35,7 +35,7 @@ public:
 
     enum ColumnIndex {
         Label = 0,   /**< User specified label */
-        Address = 1  /**< Bitcoin address */
+        Address = 1  /**< Undal address */
     };
 
     enum RoleIndex {
@@ -87,8 +87,6 @@ public:
 
     OutputType GetDefaultAddressType() const;
 
-    QString GetWalletDisplayName() const;
-
 private:
     WalletModel* const walletModel;
     AddressTablePriv *priv = nullptr;
@@ -109,4 +107,4 @@ public Q_SLOTS:
     friend class AddressTablePriv;
 };
 
-#endif // BITCOIN_QT_ADDRESSTABLEMODEL_H
+#endif // UNDAL_QT_ADDRESSTABLEMODEL_H

@@ -2,24 +2,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_BLOCKFILTER_H
-#define BITCOIN_BLOCKFILTER_H
+#ifndef UNDAL_BLOCKFILTER_H
+#define UNDAL_BLOCKFILTER_H
 
-#include <cstddef>
-#include <cstdint>
-#include <ios>
-#include <set>
+#include <stdint.h>
 #include <string>
+#include <set>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include <attributes.h>
+#include <primitives/block.h>
+#include <serialize.h>
 #include <uint256.h>
+#include <undo.h>
 #include <util/bytevectorhash.h>
-
-class CBlock;
-class CBlockUndo;
 
 /**
  * This implements a Golomb-coded set as defined in BIP 158. It is a
@@ -172,4 +169,4 @@ public:
     }
 };
 
-#endif // BITCOIN_BLOCKFILTER_H
+#endif // UNDAL_BLOCKFILTER_H

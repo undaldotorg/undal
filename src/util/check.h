@@ -2,12 +2,11 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_UTIL_CHECK_H
-#define BITCOIN_UTIL_CHECK_H
+#ifndef UNDAL_UTIL_CHECK_H
+#define UNDAL_UTIL_CHECK_H
 
 #include <attributes.h>
 
-#include <cassert> // IWYU pragma: export
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -21,6 +20,8 @@ public:
     NonFatalCheckError(std::string_view msg, std::string_view file, int line, std::string_view func);
 };
 
+#define STR_INTERNAL_BUG(msg) StrFormatInternalBug((msg), __FILE__, __LINE__, __func__)
+
 /** Helper for CHECK_NONFATAL() */
 template <typename T>
 T&& inline_check_non_fatal(LIFETIMEBOUND T&& val, const char* file, int line, const char* func, const char* assertion)
@@ -30,34 +31,6 @@ T&& inline_check_non_fatal(LIFETIMEBOUND T&& val, const char* file, int line, co
     }
     return std::forward<T>(val);
 }
-
-#if defined(NDEBUG)
-#error "Cannot compile without assertions!"
-#endif
-
-/** Helper for Assert() */
-void assertion_fail(std::string_view file, int line, std::string_view func, std::string_view assertion);
-
-/** Helper for Assert()/Assume() */
-template <bool IS_ASSERT, typename T>
-constexpr T&& inline_assertion_check(LIFETIMEBOUND T&& val, [[maybe_unused]] const char* file, [[maybe_unused]] int line, [[maybe_unused]] const char* func, [[maybe_unused]] const char* assertion)
-{
-    if constexpr (IS_ASSERT
-#ifdef ABORT_ON_FAILED_ASSUME
-                  || true
-#endif
-    ) {
-        if (!val) {
-            assertion_fail(file, line, func, assertion);
-        }
-    }
-    return std::forward<T>(val);
-}
-
-// All macros may use __func__ inside a lambda, so put them under nolint.
-// NOLINTBEGIN(bugprone-lambda-function-name)
-
-#define STR_INTERNAL_BUG(msg) StrFormatInternalBug((msg), __FILE__, __LINE__, __func__)
 
 /**
  * Identity function. Throw a NonFatalCheckError when the condition evaluates to false
@@ -72,6 +45,29 @@ constexpr T&& inline_assertion_check(LIFETIMEBOUND T&& val, [[maybe_unused]] con
  */
 #define CHECK_NONFATAL(condition) \
     inline_check_non_fatal(condition, __FILE__, __LINE__, __func__, #condition)
+
+#if defined(NDEBUG)
+#error "Cannot compile without assertions!"
+#endif
+
+/** Helper for Assert() */
+void assertion_fail(std::string_view file, int line, std::string_view func, std::string_view assertion);
+
+/** Helper for Assert()/Assume() */
+template <bool IS_ASSERT, typename T>
+T&& inline_assertion_check(LIFETIMEBOUND T&& val, [[maybe_unused]] const char* file, [[maybe_unused]] int line, [[maybe_unused]] const char* func, [[maybe_unused]] const char* assertion)
+{
+    if constexpr (IS_ASSERT
+#ifdef ABORT_ON_FAILED_ASSUME
+                  || true
+#endif
+    ) {
+        if (!val) {
+            assertion_fail(file, line, func, assertion);
+        }
+    }
+    return std::forward<T>(val);
+}
 
 /** Identity function. Abort if the value compares equal to zero */
 #define Assert(val) inline_assertion_check<true>(val, __FILE__, __LINE__, __func__, #val)
@@ -95,6 +91,4 @@ constexpr T&& inline_assertion_check(LIFETIMEBOUND T&& val, [[maybe_unused]] con
     throw NonFatalCheckError(                                         \
         "Unreachable code reached (non-fatal)", __FILE__, __LINE__, __func__)
 
-// NOLINTEND(bugprone-lambda-function-name)
-
-#endif // BITCOIN_UTIL_CHECK_H
+#endif // UNDAL_UTIL_CHECK_H

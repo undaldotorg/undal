@@ -30,7 +30,7 @@ from test_framework.messages import (
 from test_framework.p2p import (
     P2PInterface,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.wallet import MiniWallet
 
 class P2PTxSpy(P2PInterface):
@@ -47,7 +47,7 @@ class P2PTxSpy(P2PInterface):
     def wait_for_inv_match(self, expected_inv):
         self.wait_until(lambda: len(self.all_invs) == 1 and self.all_invs[0] == expected_inv)
 
-class TxPrivacyTest(BitcoinTestFramework):
+class TxPrivacyTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -74,4 +74,4 @@ class TxPrivacyTest(BitcoinTestFramework):
         spy.wait_for_inv_match(CInv(MSG_WTX, tx2.calc_sha256(True)))
 
 if __name__ == '__main__':
-    TxPrivacyTest(__file__).main()
+    TxPrivacyTest().main()

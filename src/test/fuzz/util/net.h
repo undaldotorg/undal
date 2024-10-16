@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TEST_FUZZ_UTIL_NET_H
-#define BITCOIN_TEST_FUZZ_UTIL_NET_H
+#ifndef UNDAL_TEST_FUZZ_UTIL_NET_H
+#define UNDAL_TEST_FUZZ_UTIL_NET_H
 
 #include <net.h>
 #include <net_permissions.h>
@@ -24,15 +24,7 @@
 #include <optional>
 #include <string>
 
-/**
- * Create a CNetAddr. It may have `addr.IsValid() == false`.
- * @param[in,out] fuzzed_data_provider Take data for the address from this, if `rand` is `nullptr`.
- * @param[in,out] rand If not nullptr, take data from it instead of from `fuzzed_data_provider`.
- * Prefer generating addresses using `fuzzed_data_provider` because it is not uniform. Only use
- * `rand` if `fuzzed_data_provider` is exhausted or its data is needed for other things.
- * @return a "random" network address.
- */
-CNetAddr ConsumeNetAddr(FuzzedDataProvider& fuzzed_data_provider, FastRandomContext* rand = nullptr) noexcept;
+CNetAddr ConsumeNetAddr(FuzzedDataProvider& fuzzed_data_provider) noexcept;
 
 class FuzzedSock : public Sock
 {
@@ -43,7 +35,7 @@ class FuzzedSock : public Sock
      * If `MSG_PEEK` is used, then our `Recv()` returns some random data as usual, but on the next
      * `Recv()` call we must return the same data, thus we remember it here.
      */
-    mutable std::vector<uint8_t> m_peek_data;
+    mutable std::optional<uint8_t> m_peek_data;
 
     /**
      * Whether to pretend that the socket is select(2)-able. This is randomly set in the
@@ -146,4 +138,4 @@ inline std::unique_ptr<CNode> ConsumeNodeAsUniquePtr(FuzzedDataProvider& fdp, co
 
 void FillNode(FuzzedDataProvider& fuzzed_data_provider, ConnmanTestMsg& connman, CNode& node) noexcept EXCLUSIVE_LOCKS_REQUIRED(NetEventsInterface::g_msgproc_mutex);
 
-#endif // BITCOIN_TEST_FUZZ_UTIL_NET_H
+#endif // UNDAL_TEST_FUZZ_UTIL_NET_H

@@ -2,16 +2,16 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_PREVECTOR_H
-#define BITCOIN_PREVECTOR_H
+#ifndef UNDAL_PREVECTOR_H
+#define UNDAL_PREVECTOR_H
+
+#include <assert.h>
+#include <cstdlib>
+#include <stdint.h>
+#include <string.h>
 
 #include <algorithm>
-#include <cassert>
 #include <cstddef>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <iterator>
 #include <type_traits>
 #include <utility>
 
@@ -47,27 +47,26 @@ public:
     typedef const value_type* const_pointer;
 
     class iterator {
-        T* ptr{};
+        T* ptr;
     public:
         typedef Diff difference_type;
+        typedef T value_type;
         typedef T* pointer;
         typedef T& reference;
-        using element_type = T;
-        using iterator_category = std::contiguous_iterator_tag;
-        iterator() = default;
+        typedef std::random_access_iterator_tag iterator_category;
         iterator(T* ptr_) : ptr(ptr_) {}
         T& operator*() const { return *ptr; }
         T* operator->() const { return ptr; }
-        T& operator[](size_type pos) const { return ptr[pos]; }
+        T& operator[](size_type pos) { return ptr[pos]; }
+        const T& operator[](size_type pos) const { return ptr[pos]; }
         iterator& operator++() { ptr++; return *this; }
         iterator& operator--() { ptr--; return *this; }
         iterator operator++(int) { iterator copy(*this); ++(*this); return copy; }
         iterator operator--(int) { iterator copy(*this); --(*this); return copy; }
         difference_type friend operator-(iterator a, iterator b) { return (&(*a) - &(*b)); }
-        iterator operator+(size_type n) const { return iterator(ptr + n); }
-        iterator friend operator+(size_type n, iterator x) { return x + n; }
+        iterator operator+(size_type n) { return iterator(ptr + n); }
         iterator& operator+=(size_type n) { ptr += n; return *this; }
-        iterator operator-(size_type n) const { return iterator(ptr - n); }
+        iterator operator-(size_type n) { return iterator(ptr - n); }
         iterator& operator-=(size_type n) { ptr -= n; return *this; }
         bool operator==(iterator x) const { return ptr == x.ptr; }
         bool operator!=(iterator x) const { return ptr != x.ptr; }
@@ -78,17 +77,18 @@ public:
     };
 
     class reverse_iterator {
-        T* ptr{};
+        T* ptr;
     public:
         typedef Diff difference_type;
         typedef T value_type;
         typedef T* pointer;
         typedef T& reference;
         typedef std::bidirectional_iterator_tag iterator_category;
-        reverse_iterator() = default;
         reverse_iterator(T* ptr_) : ptr(ptr_) {}
-        T& operator*() const { return *ptr; }
-        T* operator->() const { return ptr; }
+        T& operator*() { return *ptr; }
+        const T& operator*() const { return *ptr; }
+        T* operator->() { return ptr; }
+        const T* operator->() const { return ptr; }
         reverse_iterator& operator--() { ptr++; return *this; }
         reverse_iterator& operator++() { ptr--; return *this; }
         reverse_iterator operator++(int) { reverse_iterator copy(*this); ++(*this); return copy; }
@@ -98,14 +98,13 @@ public:
     };
 
     class const_iterator {
-        const T* ptr{};
+        const T* ptr;
     public:
         typedef Diff difference_type;
+        typedef const T value_type;
         typedef const T* pointer;
         typedef const T& reference;
-        using element_type = const T;
-        using iterator_category = std::contiguous_iterator_tag;
-        const_iterator() = default;
+        typedef std::random_access_iterator_tag iterator_category;
         const_iterator(const T* ptr_) : ptr(ptr_) {}
         const_iterator(iterator x) : ptr(&(*x)) {}
         const T& operator*() const { return *ptr; }
@@ -116,10 +115,9 @@ public:
         const_iterator operator++(int) { const_iterator copy(*this); ++(*this); return copy; }
         const_iterator operator--(int) { const_iterator copy(*this); --(*this); return copy; }
         difference_type friend operator-(const_iterator a, const_iterator b) { return (&(*a) - &(*b)); }
-        const_iterator operator+(size_type n) const { return const_iterator(ptr + n); }
-        const_iterator friend operator+(size_type n, const_iterator x) { return x + n; }
+        const_iterator operator+(size_type n) { return const_iterator(ptr + n); }
         const_iterator& operator+=(size_type n) { ptr += n; return *this; }
-        const_iterator operator-(size_type n) const { return const_iterator(ptr - n); }
+        const_iterator operator-(size_type n) { return const_iterator(ptr - n); }
         const_iterator& operator-=(size_type n) { ptr -= n; return *this; }
         bool operator==(const_iterator x) const { return ptr == x.ptr; }
         bool operator!=(const_iterator x) const { return ptr != x.ptr; }
@@ -130,14 +128,13 @@ public:
     };
 
     class const_reverse_iterator {
-        const T* ptr{};
+        const T* ptr;
     public:
         typedef Diff difference_type;
         typedef const T value_type;
         typedef const T* pointer;
         typedef const T& reference;
         typedef std::bidirectional_iterator_tag iterator_category;
-        const_reverse_iterator() = default;
         const_reverse_iterator(const T* ptr_) : ptr(ptr_) {}
         const_reverse_iterator(reverse_iterator x) : ptr(&(*x)) {}
         const T& operator*() const { return *ptr; }
@@ -210,7 +207,7 @@ private:
         std::fill_n(dst, count, value);
     }
 
-    template <std::input_iterator InputIterator>
+    template<typename InputIterator>
     void fill(T* dst, InputIterator first, InputIterator last) {
         while (first != last) {
             new(static_cast<void*>(dst)) T(*first);
@@ -229,7 +226,7 @@ public:
         fill(item_ptr(0), n, val);
     }
 
-    template <std::input_iterator InputIterator>
+    template<typename InputIterator>
     void assign(InputIterator first, InputIterator last) {
         size_type n = last - first;
         clear();
@@ -240,7 +237,7 @@ public:
         fill(item_ptr(0), first, last);
     }
 
-    prevector() = default;
+    prevector() {}
 
     explicit prevector(size_type n) {
         resize(n);
@@ -252,7 +249,7 @@ public:
         fill(item_ptr(0), n, val);
     }
 
-    template <std::input_iterator InputIterator>
+    template<typename InputIterator>
     prevector(InputIterator first, InputIterator last) {
         size_type n = last - first;
         change_capacity(n);
@@ -267,10 +264,8 @@ public:
         fill(item_ptr(0), other.begin(),  other.end());
     }
 
-    prevector(prevector<N, T, Size, Diff>&& other) noexcept
-        : _union(std::move(other._union)), _size(other._size)
-    {
-        other._size = 0;
+    prevector(prevector<N, T, Size, Diff>&& other) {
+        swap(other);
     }
 
     prevector& operator=(const prevector<N, T, Size, Diff>& other) {
@@ -281,13 +276,8 @@ public:
         return *this;
     }
 
-    prevector& operator=(prevector<N, T, Size, Diff>&& other) noexcept {
-        if (!is_direct()) {
-            free(_union.indirect_contents.indirect);
-        }
-        _union = std::move(other._union);
-        _size = other._size;
-        other._size = 0;
+    prevector& operator=(prevector<N, T, Size, Diff>&& other) {
+        swap(other);
         return *this;
     }
 
@@ -363,8 +353,7 @@ public:
             change_capacity(new_size + (new_size >> 1));
         }
         T* ptr = item_ptr(p);
-        T* dst = ptr + 1;
-        memmove(dst, ptr, (size() - p) * sizeof(T));
+        memmove(ptr + 1, ptr, (size() - p) * sizeof(T));
         _size++;
         new(static_cast<void*>(ptr)) T(value);
         return iterator(ptr);
@@ -377,13 +366,12 @@ public:
             change_capacity(new_size + (new_size >> 1));
         }
         T* ptr = item_ptr(p);
-        T* dst = ptr + count;
-        memmove(dst, ptr, (size() - p) * sizeof(T));
+        memmove(ptr + count, ptr, (size() - p) * sizeof(T));
         _size += count;
         fill(item_ptr(p), count, value);
     }
 
-    template <std::input_iterator InputIterator>
+    template<typename InputIterator>
     void insert(iterator pos, InputIterator first, InputIterator last) {
         size_type p = pos - begin();
         difference_type count = last - first;
@@ -392,8 +380,7 @@ public:
             change_capacity(new_size + (new_size >> 1));
         }
         T* ptr = item_ptr(p);
-        T* dst = ptr + count;
-        memmove(dst, ptr, (size() - p) * sizeof(T));
+        memmove(ptr + count, ptr, (size() - p) * sizeof(T));
         _size += count;
         fill(ptr, first, last);
     }
@@ -539,4 +526,4 @@ public:
     }
 };
 
-#endif // BITCOIN_PREVECTOR_H
+#endif // UNDAL_PREVECTOR_H

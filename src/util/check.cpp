@@ -4,7 +4,9 @@
 
 #include <util/check.h>
 
-#include <bitcoin-build-config.h> // IWYU pragma: keep
+#if defined(HAVE_CONFIG_H)
+#include <config/undal-config.h>
+#endif
 
 #include <clientversion.h>
 #include <tinyformat.h>
@@ -16,7 +18,7 @@
 
 std::string StrFormatInternalBug(std::string_view msg, std::string_view file, int line, std::string_view func)
 {
-    return strprintf("Internal bug detected: %s\n%s:%d (%s)\n"
+    return strprintf("Internal bug detected: \"%s\"\n%s:%d (%s)\n"
                      "%s %s\n"
                      "Please report this issue here: %s\n",
                      msg, file, line, func, PACKAGE_NAME, FormatFullVersion(), PACKAGE_BUGREPORT);

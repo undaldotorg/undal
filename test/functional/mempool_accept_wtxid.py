@@ -29,12 +29,12 @@ from test_framework.script import (
     OP_TRUE,
     hash160,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
 )
 
-class MempoolWtxidTest(BitcoinTestFramework):
+class MempoolWtxidTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -125,4 +125,4 @@ class MempoolWtxidTest(BitcoinTestFramework):
         assert_equal(node.getmempoolinfo()["unbroadcastcount"], 0)
 
 if __name__ == '__main__':
-    MempoolWtxidTest(__file__).main()
+    MempoolWtxidTest().main()

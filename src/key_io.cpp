@@ -6,9 +6,6 @@
 
 #include <base58.h>
 #include <bech32.h>
-#include <script/interpreter.h>
-#include <script/solver.h>
-#include <tinyformat.h>
 #include <util/strencodings.h>
 
 #include <algorithm>
@@ -67,18 +64,16 @@ public:
 
     std::string operator()(const WitnessUnknown& id) const
     {
-        const std::vector<unsigned char>& program = id.GetWitnessProgram();
-        if (id.GetWitnessVersion() < 1 || id.GetWitnessVersion() > 16 || program.size() < 2 || program.size() > 40) {
+        if (id.version < 1 || id.version > 16 || id.length < 2 || id.length > 40) {
             return {};
         }
-        std::vector<unsigned char> data = {(unsigned char)id.GetWitnessVersion()};
-        data.reserve(1 + (program.size() * 8 + 4) / 5);
-        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, program.begin(), program.end());
+        std::vector<unsigned char> data = {(unsigned char)id.version};
+        data.reserve(1 + (id.length * 8 + 4) / 5);
+        ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.program, id.program + id.length);
         return bech32::Encode(bech32::Encoding::BECH32M, m_params.Bech32HRP(), data);
     }
 
     std::string operator()(const CNoDestination& no) const { return {}; }
-    std::string operator()(const PubKeyDestination& pk) const { return {}; }
 };
 
 CTxDestination DecodeDestination(const std::string& str, const CChainParams& params, std::string& error_str, std::vector<int>* error_locations)
@@ -91,7 +86,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     bool is_bech32 = (ToLower(str.substr(0, params.Bech32HRP().size())) == params.Bech32HRP());
 
     if (!is_bech32 && DecodeBase58Check(str, data, 21)) {
-        // base58-encoded Bitcoin addresses.
+        // base58-encoded Undal addresses.
         // Public-key-hash-addresses have version 0 (or 111 testnet).
         // The data vector contains RIPEMD160(SHA256(pubkey)), where pubkey is the serialized public key.
         const std::vector<unsigned char>& pubkey_prefix = params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
@@ -129,11 +124,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
 
     data.clear();
     const auto dec = bech32::Decode(str);
-    if (dec.encoding == bech32::Encoding::BECH32 || dec.encoding == bech32::Encoding::BECH32M) {
-        if (dec.data.empty()) {
-            error_str = "Empty Bech32 data section";
-            return CNoDestination();
-        }
+    if ((dec.encoding == bech32::Encoding::BECH32 || dec.encoding == bech32::Encoding::BECH32M) && dec.data.size() > 0) {
         // Bech32 decoding
         if (dec.hrp != params.Bech32HRP()) {
             error_str = strprintf("Invalid or unsupported prefix for Segwit (Bech32) address (expected %s, got %s).", params.Bech32HRP(), dec.hrp);
@@ -151,9 +142,6 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
         // The rest of the symbols are converted witness program bytes.
         data.reserve(((dec.data.size() - 1) * 5) / 8);
         if (ConvertBits<5, 8, false>([&](unsigned char c) { data.push_back(c); }, dec.data.begin() + 1, dec.data.end())) {
-
-            std::string_view byte_str{data.size() == 1 ? "byte" : "bytes"};
-
             if (version == 0) {
                 {
                     WitnessV0KeyHash keyid;
@@ -170,7 +158,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
                     }
                 }
 
-                error_str = strprintf("Invalid Bech32 v0 address program size (%d %s), per BIP141", data.size(), byte_str);
+                error_str = "Invalid Bech32 v0 address data size";
                 return CNoDestination();
             }
 
@@ -181,24 +169,21 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
                 return tap;
             }
 
-            if (CScript::IsPayToAnchor(version, data)) {
-                return PayToAnchor();
-            }
-
             if (version > 16) {
                 error_str = "Invalid Bech32 address witness version";
                 return CNoDestination();
             }
 
             if (data.size() < 2 || data.size() > BECH32_WITNESS_PROG_MAX_LEN) {
-                error_str = strprintf("Invalid Bech32 address program size (%d %s)", data.size(), byte_str);
+                error_str = "Invalid Bech32 address data size";
                 return CNoDestination();
             }
 
-            return WitnessUnknown{version, data};
-        } else {
-            error_str = strprintf("Invalid padding in Bech32 data section");
-            return CNoDestination();
+            WitnessUnknown unk;
+            unk.version = version;
+            std::copy(data.begin(), data.end(), unk.program);
+            unk.length = data.size();
+            return unk;
         }
     }
 
@@ -232,7 +217,7 @@ std::string EncodeSecret(const CKey& key)
 {
     assert(key.IsValid());
     std::vector<unsigned char> data = Params().Base58Prefix(CChainParams::SECRET_KEY);
-    data.insert(data.end(), UCharCast(key.begin()), UCharCast(key.end()));
+    data.insert(data.end(), key.begin(), key.end());
     if (key.IsCompressed()) {
         data.push_back(1);
     }

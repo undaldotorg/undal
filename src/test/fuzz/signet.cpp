@@ -11,7 +11,6 @@
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
 #include <test/util/setup_common.h>
-#include <util/chaintype.h>
 
 #include <cstdint>
 #include <optional>
@@ -19,13 +18,13 @@
 
 void initialize_signet()
 {
-    static const auto testing_setup = MakeNoLogFileContext<>(ChainType::SIGNET);
+    static const auto testing_setup = MakeNoLogFileContext<>(CBaseChainParams::SIGNET);
 }
 
-FUZZ_TARGET(signet, .init = initialize_signet)
+FUZZ_TARGET_INIT(signet, initialize_signet)
 {
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
-    const std::optional<CBlock> block = ConsumeDeserializable<CBlock>(fuzzed_data_provider, TX_WITH_WITNESS);
+    const std::optional<CBlock> block = ConsumeDeserializable<CBlock>(fuzzed_data_provider);
     if (!block) {
         return;
     }

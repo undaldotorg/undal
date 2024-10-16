@@ -1,6 +1,12 @@
 freebsd_CFLAGS=-pipe -std=$(C_STANDARD)
 freebsd_CXXFLAGS=-pipe -std=$(CXX_STANDARD)
 
+ifneq ($(LTO),)
+freebsd_CFLAGS += -flto
+freebsd_CXXFLAGS += -flto
+freebsd_LDFLAGS += -flto
+endif
+
 freebsd_release_CFLAGS=-O2
 freebsd_release_CXXFLAGS=$(freebsd_release_CFLAGS)
 
@@ -28,4 +34,4 @@ x86_64_freebsd_CC=$(default_host_CC) -m64
 x86_64_freebsd_CXX=$(default_host_CXX) -m64
 endif
 
-freebsd_cmake_system_name=FreeBSD
+freebsd_cmake_system=FreeBSD

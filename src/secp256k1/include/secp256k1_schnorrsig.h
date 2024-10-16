@@ -9,8 +9,8 @@ extern "C" {
 #endif
 
 /** This module implements a variant of Schnorr signatures compliant with
- *  Bitcoin Improvement Proposal 340 "Schnorr Signatures for secp256k1"
- *  (https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki).
+ *  Undal Improvement Proposal 340 "Schnorr Signatures for secp256k1"
+ *  (https://github.com/undal/bips/blob/master/bip-0340.mediawiki).
  */
 
 /** A pointer to a function to deterministically generate a nonce.
@@ -49,9 +49,9 @@ typedef int (*secp256k1_nonce_function_hardened)(
     void *data
 );
 
-/** An implementation of the nonce generation function as defined in Bitcoin
+/** An implementation of the nonce generation function as defined in Undal
  *  Improvement Proposal 340 "Schnorr Signatures for secp256k1"
- *  (https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki).
+ *  (https://github.com/undal/bips/blob/master/bip-0340.mediawiki).
  *
  *  If a data pointer is passed, it is assumed to be a pointer to 32 bytes of
  *  auxiliary random data as defined in BIP-340. If the data pointer is NULL,
@@ -61,7 +61,7 @@ typedef int (*secp256k1_nonce_function_hardened)(
  *  Therefore, to create BIP-340 compliant signatures, algo must be set to
  *  "BIP0340/nonce" and algolen to 13.
  */
-SECP256K1_API const secp256k1_nonce_function_hardened secp256k1_nonce_function_bip340;
+SECP256K1_API_VAR const secp256k1_nonce_function_hardened secp256k1_nonce_function_bip340;
 
 /** Data structure that contains additional arguments for schnorrsig_sign_custom.
  *
@@ -141,20 +141,12 @@ SECP256K1_API int secp256k1_schnorrsig_sign(
  *  variable length messages and accepts a pointer to an extraparams object that
  *  allows customizing signing by passing additional arguments.
  *
- *  Equivalent to secp256k1_schnorrsig_sign32(..., aux_rand32) if msglen is 32
- *  and extraparams is initialized as follows:
- *  ```
- *  secp256k1_schnorrsig_extraparams extraparams = SECP256K1_SCHNORRSIG_EXTRAPARAMS_INIT;
- *  extraparams.ndata = (unsigned char*)aux_rand32;
- *  ```
+ *  Creates the same signatures as schnorrsig_sign if msglen is 32 and the
+ *  extraparams.ndata is the same as aux_rand32.
  *
- *  Returns 1 on success, 0 on failure.
- *  Args:   ctx: pointer to a context object (not secp256k1_context_static).
- *  Out:  sig64: pointer to a 64-byte array to store the serialized signature.
  *  In:     msg: the message being signed. Can only be NULL if msglen is 0.
- *       msglen: length of the message.
- *      keypair: pointer to an initialized keypair.
- *  extraparams: pointer to an extraparams object (can be NULL).
+ *       msglen: length of the message
+ *  extraparams: pointer to a extraparams object (can be NULL)
  */
 SECP256K1_API int secp256k1_schnorrsig_sign_custom(
     const secp256k1_context *ctx,
@@ -169,11 +161,11 @@ SECP256K1_API int secp256k1_schnorrsig_sign_custom(
  *
  *  Returns: 1: correct signature
  *           0: incorrect signature
- *  Args:    ctx: pointer to a context object.
+ *  Args:    ctx: a secp256k1 context object.
  *  In:    sig64: pointer to the 64-byte signature to verify.
  *           msg: the message being verified. Can only be NULL if msglen is 0.
  *        msglen: length of the message
- *        pubkey: pointer to an x-only public key to verify with
+ *        pubkey: pointer to an x-only public key to verify with (cannot be NULL)
  */
 SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_schnorrsig_verify(
     const secp256k1_context *ctx,

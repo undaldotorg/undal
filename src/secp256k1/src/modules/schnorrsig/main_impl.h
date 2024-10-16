@@ -45,7 +45,7 @@ static void secp256k1_nonce_function_bip340_sha256_tagged_aux(secp256k1_sha256 *
 
 /* algo argument for nonce_function_bip340 to derive the nonce exactly as stated in BIP-340
  * by using the correct tagged hash function. */
-static const unsigned char bip340_algo[] = {'B', 'I', 'P', '0', '3', '4', '0', '/', 'n', 'o', 'n', 'c', 'e'};
+static const unsigned char bip340_algo[13] = "BIP0340/nonce";
 
 static const unsigned char schnorrsig_extraparams_magic[4] = SECP256K1_SCHNORRSIG_EXTRAPARAMS_MAGIC;
 
@@ -232,7 +232,7 @@ int secp256k1_schnorrsig_verify(const secp256k1_context* ctx, const unsigned cha
     ARG_CHECK(msg != NULL || msglen == 0);
     ARG_CHECK(pubkey != NULL);
 
-    if (!secp256k1_fe_set_b32_limit(&rx, &sig64[0])) {
+    if (!secp256k1_fe_set_b32(&rx, &sig64[0])) {
         return 0;
     }
 
@@ -261,7 +261,7 @@ int secp256k1_schnorrsig_verify(const secp256k1_context* ctx, const unsigned cha
 
     secp256k1_fe_normalize_var(&r.y);
     return !secp256k1_fe_is_odd(&r.y) &&
-           secp256k1_fe_equal(&rx, &r.x);
+           secp256k1_fe_equal_var(&rx, &r.x);
 }
 
 #endif

@@ -1,10 +1,11 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2024 The Undal Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_WALLET_DB_H
-#define BITCOIN_WALLET_DB_H
+#ifndef UNDAL_WALLET_DB_H
+#define UNDAL_WALLET_DB_H
 
 #include <clientversion.h>
 #include <streams.h>
@@ -20,18 +21,13 @@ class ArgsManager;
 struct bilingual_str;
 
 namespace wallet {
-// BytePrefix compares equality with other byte spans that begin with the same prefix.
-struct BytePrefix {
-    Span<const std::byte> prefix;
-};
-bool operator<(BytePrefix a, Span<const std::byte> b);
-bool operator<(Span<const std::byte> a, BytePrefix b);
+void SplitWalletPath(const fs::path& wallet_path, fs::path& env_directory, std::string& database_filename);
 
 class DatabaseCursor
 {
 public:
-    explicit DatabaseCursor() = default;
-    virtual ~DatabaseCursor() = default;
+    explicit DatabaseCursor() {}
+    virtual ~DatabaseCursor() {}
 
     DatabaseCursor(const DatabaseCursor&) = delete;
     DatabaseCursor& operator=(const DatabaseCursor&) = delete;
@@ -56,8 +52,8 @@ private:
     virtual bool HasKey(DataStream&& key) = 0;
 
 public:
-    explicit DatabaseBatch() = default;
-    virtual ~DatabaseBatch() = default;
+    explicit DatabaseBatch() {}
+    virtual ~DatabaseBatch() {}
 
     DatabaseBatch(const DatabaseBatch&) = delete;
     DatabaseBatch& operator=(const DatabaseBatch&) = delete;
@@ -72,7 +68,7 @@ public:
         ssKey.reserve(1000);
         ssKey << key;
 
-        DataStream ssValue{};
+        CDataStream ssValue(SER_DISK, CLIENT_VERSION);
         if (!ReadKey(std::move(ssKey), ssValue)) return false;
         try {
             ssValue >> value;
@@ -89,7 +85,7 @@ public:
         ssKey.reserve(1000);
         ssKey << key;
 
-        DataStream ssValue{};
+        CDataStream ssValue(SER_DISK, CLIENT_VERSION);
         ssValue.reserve(10000);
         ssValue << value;
 
@@ -115,10 +111,8 @@ public:
 
         return HasKey(std::move(ssKey));
     }
-    virtual bool ErasePrefix(Span<const std::byte> prefix) = 0;
 
     virtual std::unique_ptr<DatabaseCursor> GetNewCursor() = 0;
-    virtual std::unique_ptr<DatabaseCursor> GetNewPrefixCursor(Span<const std::byte> prefix) = 0;
     virtual bool TxnBegin() = 0;
     virtual bool TxnCommit() = 0;
     virtual bool TxnAbort() = 0;
@@ -131,7 +125,7 @@ class WalletDatabase
 public:
     /** Create dummy DB handle */
     WalletDatabase() : nUpdateCounter(0) {}
-    virtual ~WalletDatabase() = default;
+    virtual ~WalletDatabase() {};
 
     /** Open the database if it is not already opened. */
     virtual void Open() = 0;
@@ -180,11 +174,53 @@ public:
     virtual std::unique_ptr<DatabaseBatch> MakeBatch(bool flush_on_close = true) = 0;
 };
 
+class DummyCursor : public DatabaseCursor
+{
+    Status Next(DataStream& key, DataStream& value) override { return Status::FAIL; }
+};
+
+/** RAII class that provides access to a DummyDatabase. Never fails. */
+class DummyBatch : public DatabaseBatch
+{
+private:
+    bool ReadKey(DataStream&& key, DataStream& value) override { return true; }
+    bool WriteKey(DataStream&& key, DataStream&& value, bool overwrite = true) override { return true; }
+    bool EraseKey(DataStream&& key) override { return true; }
+    bool HasKey(DataStream&& key) override { return true; }
+
+public:
+    void Flush() override {}
+    void Close() override {}
+
+    std::unique_ptr<DatabaseCursor> GetNewCursor() override { return std::make_unique<DummyCursor>(); }
+    bool TxnBegin() override { return true; }
+    bool TxnCommit() override { return true; }
+    bool TxnAbort() override { return true; }
+};
+
+/** A dummy WalletDatabase that does nothing and never fails. Only used by unit tests.
+ **/
+class DummyDatabase : public WalletDatabase
+{
+public:
+    void Open() override {};
+    void AddRef() override {}
+    void RemoveRef() override {}
+    bool Rewrite(const char* pszSkip=nullptr) override { return true; }
+    bool Backup(const std::string& strDest) const override { return true; }
+    void Close() override {}
+    void Flush() override {}
+    bool PeriodicFlush() override { return true; }
+    void IncrementUpdateCounter() override { ++nUpdateCounter; }
+    void ReloadDbEnv() override {}
+    std::string Filename() override { return "dummy"; }
+    std::string Format() override { return "dummy"; }
+    std::unique_ptr<DatabaseBatch> MakeBatch(bool flush_on_close = true) override { return std::make_unique<DummyBatch>(); }
+};
+
 enum class DatabaseFormat {
     BERKELEY,
     SQLITE,
-    BERKELEY_RO,
-    BERKELEY_SWAP,
 };
 
 struct DatabaseOptions {
@@ -216,7 +252,7 @@ enum class DatabaseStatus {
 };
 
 /** Recursively list database paths in directory. */
-std::vector<std::pair<fs::path, std::string>> ListDatabases(const fs::path& path);
+std::vector<fs::path> ListDatabases(const fs::path& path);
 
 void ReadDatabaseArgs(const ArgsManager& args, DatabaseOptions& options);
 std::unique_ptr<WalletDatabase> MakeDatabase(const fs::path& path, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error);
@@ -227,4 +263,4 @@ bool IsBDBFile(const fs::path& path);
 bool IsSQLiteFile(const fs::path& path);
 } // namespace wallet
 
-#endif // BITCOIN_WALLET_DB_H
+#endif // UNDAL_WALLET_DB_H

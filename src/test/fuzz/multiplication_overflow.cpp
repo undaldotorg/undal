@@ -2,6 +2,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#if defined(HAVE_CONFIG_H)
+#include <config/undal-config.h>
+#endif
+
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
@@ -17,7 +21,7 @@ void TestMultiplicationOverflow(FuzzedDataProvider& fuzzed_data_provider)
     const T i = fuzzed_data_provider.ConsumeIntegral<T>();
     const T j = fuzzed_data_provider.ConsumeIntegral<T>();
     const bool is_multiplication_overflow_custom = MultiplicationOverflow(i, j);
-#ifndef _MSC_VER
+#if defined(HAVE_BUILTIN_MUL_OVERFLOW)
     T result_builtin;
     const bool is_multiplication_overflow_builtin = __builtin_mul_overflow(i, j, &result_builtin);
     assert(is_multiplication_overflow_custom == is_multiplication_overflow_builtin);

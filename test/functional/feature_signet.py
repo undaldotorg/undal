@@ -6,7 +6,7 @@
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
 
 signet_blocks = [
@@ -23,7 +23,7 @@ signet_blocks = [
 ]
 
 
-class SignetBasicTest(BitcoinTestFramework):
+class SignetBasicTest(UndalTestFramework):
     def set_test_params(self):
         self.chain = "signet"
         self.num_nodes = 6
@@ -76,10 +76,7 @@ class SignetBasicTest(BitcoinTestFramework):
         self.log.info("test that signet logs the network magic on node start")
         with self.nodes[0].assert_debug_log(["Signet derived magic (message start)"]):
             self.restart_node(0)
-        self.stop_node(0)
-        self.nodes[0].assert_start_raises_init_error(extra_args=["-signetchallenge=abc"], expected_msg="Error: -signetchallenge must be hex, not 'abc'.")
-        self.nodes[0].assert_start_raises_init_error(extra_args=["-signetchallenge=abc"] * 2, expected_msg="Error: -signetchallenge cannot be multiple values.")
 
 
 if __name__ == '__main__':
-    SignetBasicTest(__file__).main()
+    SignetBasicTest().main()

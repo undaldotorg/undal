@@ -1,0 +1,33 @@
+# /etc/conf.d/undald: config file for /etc/init.d/undald
+
+# Config file location
+#UNDALD_CONFIGFILE="/etc/undal/undal.conf"
+
+# What directory to write pidfile to?  (created and owned by $UNDALD_USER)
+#UNDALD_PIDDIR="/var/run/undald"
+
+# What filename to give the pidfile
+#UNDALD_PIDFILE="${UNDALD_PIDDIR}/undald.pid"
+
+# Where to write undald data (be mindful that the blockchain is large)
+#UNDALD_DATADIR="/var/lib/undald"
+
+# User and group to own undald process
+#UNDALD_USER="undal"
+#UNDALD_GROUP="undal"
+
+# Path to undald executable
+#UNDALD_BIN="/usr/bin/undald"
+
+# Nice value to run undald under
+#UNDALD_NICE=0
+
+# Additional options (avoid -conf and -datadir, use flags above)
+#UNDALD_OPTS=""
+
+# The timeout in seconds OpenRC will wait for undald to terminate
+# after a SIGTERM has been raised.
+# Note that this will be mapped as argument to start-stop-daemon's
+# '--retry' option, which means you can specify a retry schedule
+# here. For more information see man 8 start-stop-daemon.
+UNDALD_SIGTERM_TIMEOUT=600

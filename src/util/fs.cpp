@@ -1,4 +1,4 @@
-// Copyright (c) 2017-present The Bitcoin Core developers
+// Copyright (c) 2017-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -18,7 +18,6 @@
 #endif
 
 #include <cassert>
-#include <cerrno>
 #include <string>
 
 namespace fsbridge {
@@ -82,7 +81,12 @@ bool FileLock::TryLock()
 #else
 
 static std::string GetErrorReason() {
-    return Win32ErrorString(GetLastError());
+    wchar_t* err;
+    FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<WCHAR*>(&err), 0, nullptr);
+    std::wstring err_str(err);
+    LocalFree(err);
+    return std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>().to_bytes(err_str);
 }
 
 FileLock::FileLock(const fs::path& file)
@@ -131,4 +135,4 @@ std::string get_filesystem_error_message(const fs::filesystem_error& e)
 #endif
 }
 
-} // namespace fsbridge
+} // fsbridge

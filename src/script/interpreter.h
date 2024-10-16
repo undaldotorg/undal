@@ -3,26 +3,24 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_SCRIPT_INTERPRETER_H
-#define BITCOIN_SCRIPT_INTERPRETER_H
+#ifndef UNDAL_SCRIPT_INTERPRETER_H
+#define UNDAL_SCRIPT_INTERPRETER_H
 
-#include <consensus/amount.h>
 #include <hash.h>
-#include <primitives/transaction.h>
-#include <script/script_error.h> // IWYU pragma: export
+#include <script/script_error.h>
 #include <span.h>
-#include <uint256.h>
+#include <primitives/transaction.h>
 
-#include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <vector>
+#include <stdint.h>
 
 class CPubKey;
-class CScript;
-class CScriptNum;
 class XOnlyPubKey;
-struct CScriptWitness;
+class CScript;
+class CTransaction;
+class CTxOut;
+class uint256;
 
 /** Signature hash types/flags */
 enum
@@ -153,7 +151,7 @@ bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned i
 struct PrecomputedTransactionData
 {
     // BIP341 precomputed data.
-    // These are single-SHA256, see https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-16.
+    // These are single-SHA256, see https://github.com/undal/bips/blob/master/bip-0341.mediawiki#cite_note-16.
     uint256 m_prevouts_single_hash;
     uint256 m_sequences_single_hash;
     uint256 m_outputs_single_hash;
@@ -265,7 +263,7 @@ public:
          return false;
     }
 
-    virtual ~BaseSignatureChecker() = default;
+    virtual ~BaseSignatureChecker() {}
 };
 
 /** Enum to specify what *TransactionSignatureChecker's behavior should be
@@ -351,4 +349,4 @@ size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey,
 
 int FindAndDelete(CScript& script, const CScript& b);
 
-#endif // BITCOIN_SCRIPT_INTERPRETER_H
+#endif // UNDAL_SCRIPT_INTERPRETER_H

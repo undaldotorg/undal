@@ -2,11 +2,11 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <common/args.h>
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
 #include <test/util/setup_common.h>
+#include <util/system.h>
 
 #include <cstdint>
 #include <string>
@@ -27,7 +27,7 @@ std::string GetArgumentName(const std::string& name)
     return name.substr(0, idx);
 }
 
-FUZZ_TARGET(system, .init = initialize_system)
+FUZZ_TARGET_INIT(system, initialize_system)
 {
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
     ArgsManager args_manager{};
@@ -44,35 +44,27 @@ FUZZ_TARGET(system, .init = initialize_system)
                 args_manager.SelectConfigNetwork(fuzzed_data_provider.ConsumeRandomLengthString(16));
             },
             [&] {
-                auto str_arg = fuzzed_data_provider.ConsumeRandomLengthString(16);
-                auto str_value = fuzzed_data_provider.ConsumeRandomLengthString(16);
-                args_manager.SoftSetArg(str_arg, str_value);
+                args_manager.SoftSetArg(fuzzed_data_provider.ConsumeRandomLengthString(16), fuzzed_data_provider.ConsumeRandomLengthString(16));
             },
             [&] {
-                auto str_arg = fuzzed_data_provider.ConsumeRandomLengthString(16);
-                auto str_value = fuzzed_data_provider.ConsumeRandomLengthString(16);
-                args_manager.ForceSetArg(str_arg, str_value);
+                args_manager.ForceSetArg(fuzzed_data_provider.ConsumeRandomLengthString(16), fuzzed_data_provider.ConsumeRandomLengthString(16));
             },
             [&] {
-                auto str_arg = fuzzed_data_provider.ConsumeRandomLengthString(16);
-                auto f_value = fuzzed_data_provider.ConsumeBool();
-                args_manager.SoftSetBoolArg(str_arg, f_value);
+                args_manager.SoftSetBoolArg(fuzzed_data_provider.ConsumeRandomLengthString(16), fuzzed_data_provider.ConsumeBool());
             },
             [&] {
-                const OptionsCategory options_category = fuzzed_data_provider.PickValueInArray<OptionsCategory>({OptionsCategory::OPTIONS, OptionsCategory::CONNECTION, OptionsCategory::WALLET, OptionsCategory::WALLET_DEBUG_TEST, OptionsCategory::ZMQ, OptionsCategory::DEBUG_TEST, OptionsCategory::CHAINPARAMS, OptionsCategory::NODE_RELAY, OptionsCategory::BLOCK_CREATION, OptionsCategory::RPC, OptionsCategory::GUI, OptionsCategory::COMMANDS, OptionsCategory::REGISTER_COMMANDS, OptionsCategory::CLI_COMMANDS, OptionsCategory::IPC, OptionsCategory::HIDDEN});
+                const OptionsCategory options_category = fuzzed_data_provider.PickValueInArray<OptionsCategory>({OptionsCategory::OPTIONS, OptionsCategory::CONNECTION, OptionsCategory::WALLET, OptionsCategory::WALLET_DEBUG_TEST, OptionsCategory::ZMQ, OptionsCategory::DEBUG_TEST, OptionsCategory::CHAINPARAMS, OptionsCategory::NODE_RELAY, OptionsCategory::BLOCK_CREATION, OptionsCategory::RPC, OptionsCategory::GUI, OptionsCategory::COMMANDS, OptionsCategory::REGISTER_COMMANDS, OptionsCategory::HIDDEN});
                 // Avoid hitting:
-                // common/args.cpp:563: void ArgsManager::AddArg(const std::string &, const std::string &, unsigned int, const OptionsCategory &): Assertion `ret.second' failed.
+                // util/system.cpp:425: void ArgsManager::AddArg(const std::string &, const std::string &, unsigned int, const OptionsCategory &): Assertion `ret.second' failed.
                 const std::string argument_name = GetArgumentName(fuzzed_data_provider.ConsumeRandomLengthString(16));
                 if (args_manager.GetArgFlags(argument_name) != std::nullopt) {
                     return;
                 }
-                auto help = fuzzed_data_provider.ConsumeRandomLengthString(16);
-                auto flags = fuzzed_data_provider.ConsumeIntegral<unsigned int>() & ~ArgsManager::COMMAND;
-                args_manager.AddArg(argument_name, help, flags, options_category);
+                args_manager.AddArg(argument_name, fuzzed_data_provider.ConsumeRandomLengthString(16), fuzzed_data_provider.ConsumeIntegral<unsigned int>() & ~ArgsManager::COMMAND, options_category);
             },
             [&] {
                 // Avoid hitting:
-                // common/args.cpp:563: void ArgsManager::AddArg(const std::string &, const std::string &, unsigned int, const OptionsCategory &): Assertion `ret.second' failed.
+                // util/system.cpp:425: void ArgsManager::AddArg(const std::string &, const std::string &, unsigned int, const OptionsCategory &): Assertion `ret.second' failed.
                 const std::vector<std::string> names = ConsumeRandomLengthStringVector(fuzzed_data_provider);
                 std::vector<std::string> hidden_arguments;
                 for (const std::string& name : names) {
@@ -116,7 +108,7 @@ FUZZ_TARGET(system, .init = initialize_system)
     (void)args_manager.GetArgs(s1);
     (void)args_manager.GetBoolArg(s1, b);
     try {
-        (void)args_manager.GetChainTypeString();
+        (void)args_manager.GetChainName();
     } catch (const std::runtime_error&) {
     }
     (void)args_manager.GetHelpMessage();

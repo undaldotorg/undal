@@ -3,16 +3,18 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_NODE_BLOCKMANAGER_ARGS_H
-#define BITCOIN_NODE_BLOCKMANAGER_ARGS_H
+#ifndef UNDAL_NODE_BLOCKMANAGER_ARGS_H
+#define UNDAL_NODE_BLOCKMANAGER_ARGS_H
 
 #include <node/blockstorage.h>
-#include <util/result.h>
+
+#include <optional>
 
 class ArgsManager;
+struct bilingual_str;
 
 namespace node {
-[[nodiscard]] util::Result<void> ApplyArgsManOptions(const ArgsManager& args, BlockManager::Options& opts);
+std::optional<bilingual_str> ApplyArgsManOptions(const ArgsManager& args, BlockManager::Options& opts);
 } // namespace node
 
-#endif // BITCOIN_NODE_BLOCKMANAGER_ARGS_H
+#endif // UNDAL_NODE_BLOCKMANAGER_ARGS_H

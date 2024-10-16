@@ -2,17 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_HTTPSERVER_H
-#define BITCOIN_HTTPSERVER_H
+#ifndef UNDAL_HTTPSERVER_H
+#define UNDAL_HTTPSERVER_H
 
 #include <functional>
 #include <optional>
-#include <span>
 #include <string>
-
-namespace util {
-class SignalInterrupt;
-} // namespace util
 
 static const int DEFAULT_HTTP_THREADS=4;
 static const int DEFAULT_HTTP_WORKQUEUE=16;
@@ -26,7 +21,7 @@ class HTTPRequest;
 /** Initialize HTTP server.
  * Call this before RegisterHTTPHandler or EventBase().
  */
-bool InitHTTPServer(const util::SignalInterrupt& interrupt);
+bool InitHTTPServer();
 /** Start HTTP server.
  * This is separate from InitHTTPServer to give users race-condition-free time
  * to register their handlers between InitHTTPServer and StartHTTPServer.
@@ -62,11 +57,10 @@ class HTTPRequest
 {
 private:
     struct evhttp_request* req;
-    const util::SignalInterrupt& m_interrupt;
     bool replySent;
 
 public:
-    explicit HTTPRequest(struct evhttp_request* req, const util::SignalInterrupt& interrupt, bool replySent = false);
+    explicit HTTPRequest(struct evhttp_request* req, bool replySent = false);
     ~HTTPRequest();
 
     enum RequestMethod {
@@ -124,16 +118,12 @@ public:
     /**
      * Write HTTP reply.
      * nStatus is the HTTP status code to send.
-     * reply is the body of the reply. Keep it empty to send a standard message.
+     * strReply is the body of the reply. Keep it empty to send a standard message.
      *
      * @note Can be called only once. As this will give the request back to the
      * main thread, do not call any other HTTPRequest methods after calling this.
      */
-    void WriteReply(int nStatus, std::string_view reply = "")
-    {
-        WriteReply(nStatus, std::as_bytes(std::span{reply}));
-    }
-    void WriteReply(int nStatus, std::span<const std::byte> reply);
+    void WriteReply(int nStatus, const std::string& strReply = "");
 };
 
 /** Get the query parameter value from request uri for a specified key, or std::nullopt if the key
@@ -156,7 +146,7 @@ class HTTPClosure
 {
 public:
     virtual void operator()() = 0;
-    virtual ~HTTPClosure() = default;
+    virtual ~HTTPClosure() {}
 };
 
 /** Event class. This can be used either as a cross-thread trigger or as a timer.
@@ -182,4 +172,4 @@ private:
     struct event* ev;
 };
 
-#endif // BITCOIN_HTTPSERVER_H
+#endif // UNDAL_HTTPSERVER_H

@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_LOGGING_TIMER_H
-#define BITCOIN_LOGGING_TIMER_H
+#ifndef UNDAL_LOGGING_TIMER_H
+#define UNDAL_LOGGING_TIMER_H
 
 #include <logging.h>
 #include <util/macros.h>
@@ -55,7 +55,7 @@ public:
         if (m_log_category == BCLog::LogFlags::ALL) {
             LogPrintf("%s\n", full_msg);
         } else {
-            LogDebug(m_log_category, "%s\n", full_msg);
+            LogPrint(m_log_category, "%s\n", full_msg);
         }
     }
 
@@ -87,7 +87,7 @@ private:
     //! A descriptive message of what is being timed.
     const std::string m_title;
 
-    //! Forwarded on to LogDebug if specified - has the effect of only
+    //! Forwarded on to LogPrint if specified - has the effect of only
     //! outputting the timing log when a particular debug= category is specified.
     const BCLog::LogFlags m_log_category;
 
@@ -108,4 +108,4 @@ private:
     BCLog::Timer<std::chrono::seconds> UNIQUE_NAME(logging_timer)(__func__, end_msg)
 
 
-#endif // BITCOIN_LOGGING_TIMER_H
+#endif // UNDAL_LOGGING_TIMER_H

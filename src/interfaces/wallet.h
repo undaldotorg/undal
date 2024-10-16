@@ -2,17 +2,16 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_INTERFACES_WALLET_H
-#define BITCOIN_INTERFACES_WALLET_H
+#ifndef UNDAL_INTERFACES_WALLET_H
+#define UNDAL_INTERFACES_WALLET_H
 
-#include <addresstype.h>
-#include <common/signmessage.h>
 #include <consensus/amount.h>
-#include <interfaces/chain.h>
-#include <pubkey.h>
-#include <script/script.h>
-#include <support/allocators/secure.h>
+#include <interfaces/chain.h>          // For ChainClient
+#include <pubkey.h>                    // For CKeyID and CScriptID (definitions needed in CTxDestination instantiation)
+#include <script/standard.h>           // For CTxDestination
+#include <support/allocators/secure.h> // For SecureString
 #include <util/fs.h>
+#include <util/message.h>
 #include <util/result.h>
 #include <util/ui_change_type.h>
 
@@ -30,14 +29,9 @@ class CFeeRate;
 class CKey;
 enum class FeeReason;
 enum class OutputType;
+enum class TransactionError;
 struct PartiallySignedTransaction;
 struct bilingual_str;
-namespace common {
-enum class PSBTError;
-} // namespace common
-namespace node {
-enum class TransactionError;
-} // namespace node
 namespace wallet {
 class CCoinControl;
 class CWallet;
@@ -56,7 +50,6 @@ struct WalletBalances;
 struct WalletTx;
 struct WalletTxOut;
 struct WalletTxStatus;
-struct WalletMigrationResult;
 
 using WalletOrderForm = std::vector<std::pair<std::string, std::string>>;
 using WalletValueMap = std::map<std::string, std::string>;
@@ -65,7 +58,7 @@ using WalletValueMap = std::map<std::string, std::string>;
 class Wallet
 {
 public:
-    virtual ~Wallet() = default;
+    virtual ~Wallet() {}
 
     //! Encrypt wallet.
     virtual bool encryptWallet(const SecureString& wallet_passphrase) = 0;
@@ -123,7 +116,7 @@ public:
         wallet::AddressPurpose* purpose) = 0;
 
     //! Get wallet address list.
-    virtual std::vector<WalletAddress> getAddresses() = 0;
+    virtual std::vector<WalletAddress> getAddresses() const = 0;
 
     //! Get receive requests.
     virtual std::vector<std::string> getAddressReceiveRequests() = 0;
@@ -132,7 +125,7 @@ public:
     virtual bool setAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& value) = 0;
 
     //! Display address on external signer
-    virtual util::Result<void> displayAddress(const CTxDestination& dest) = 0;
+    virtual bool displayAddress(const CTxDestination& dest) = 0;
 
     //! Lock coin.
     virtual bool lockCoin(const COutPoint& output, const bool write_to_db) = 0;
@@ -207,7 +200,7 @@ public:
         int& num_blocks) = 0;
 
     //! Fill PSBT.
-    virtual std::optional<common::PSBTError> fillPSBT(int sighash_type,
+    virtual TransactionError fillPSBT(int sighash_type,
         bool sign,
         bool bip32derivs,
         size_t* n_signed,
@@ -339,14 +332,8 @@ public:
     //! Restore backup wallet
     virtual util::Result<std::unique_ptr<Wallet>> restoreWallet(const fs::path& backup_file, const std::string& wallet_name, std::vector<bilingual_str>& warnings) = 0;
 
-    //! Migrate a wallet
-    virtual util::Result<WalletMigrationResult> migrateWallet(const std::string& name, const SecureString& passphrase) = 0;
-
-    //! Returns true if wallet stores encryption keys
-    virtual bool isEncrypted(const std::string& wallet_name) = 0;
-
     //! Return available wallets in wallet directory.
-    virtual std::vector<std::pair<std::string, std::string>> listWalletDir() = 0;
+    virtual std::vector<std::string> listWalletDir() = 0;
 
     //! Return interfaces for accessing wallets (if any).
     virtual std::vector<std::unique_ptr<Wallet>> getWallets() = 0;
@@ -401,7 +388,6 @@ struct WalletTx
     CTransactionRef tx;
     std::vector<wallet::isminetype> txin_is_mine;
     std::vector<wallet::isminetype> txout_is_mine;
-    std::vector<bool> txout_is_change;
     std::vector<CTxDestination> txout_address;
     std::vector<wallet::isminetype> txout_address_is_mine;
     CAmount credit;
@@ -437,15 +423,6 @@ struct WalletTxOut
     bool is_spent = false;
 };
 
-//! Migrated wallet info
-struct WalletMigrationResult
-{
-    std::unique_ptr<Wallet> wallet;
-    std::optional<std::string> watchonly_wallet_name;
-    std::optional<std::string> solvables_wallet_name;
-    fs::path backup_path;
-};
-
 //! Return implementation of Wallet interface. This function is defined in
 //! dummywallet.cpp and throws if the wallet component is not compiled.
 std::unique_ptr<Wallet> MakeWallet(wallet::WalletContext& context, const std::shared_ptr<wallet::CWallet>& wallet);
@@ -456,4 +433,4 @@ std::unique_ptr<WalletLoader> MakeWalletLoader(Chain& chain, ArgsManager& args);
 
 } // namespace interfaces
 
-#endif // BITCOIN_INTERFACES_WALLET_H
+#endif // UNDAL_INTERFACES_WALLET_H

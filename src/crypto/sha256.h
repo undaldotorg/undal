@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_CRYPTO_SHA256_H
-#define BITCOIN_CRYPTO_SHA256_H
+#ifndef UNDAL_CRYPTO_SHA256_H
+#define UNDAL_CRYPTO_SHA256_H
 
 #include <cstdlib>
 #include <stdint.h>
@@ -26,22 +26,10 @@ public:
     CSHA256& Reset();
 };
 
-namespace sha256_implementation {
-enum UseImplementation : uint8_t {
-    STANDARD = 0,
-    USE_SSE4 = 1 << 0,
-    USE_AVX2 = 1 << 1,
-    USE_SHANI = 1 << 2,
-    USE_SSE4_AND_AVX2 = USE_SSE4 | USE_AVX2,
-    USE_SSE4_AND_SHANI = USE_SSE4 | USE_SHANI,
-    USE_ALL = USE_SSE4 | USE_AVX2 | USE_SHANI,
-};
-}
-
 /** Autodetect the best available SHA256 implementation.
  *  Returns the name of the implementation.
  */
-std::string SHA256AutoDetect(sha256_implementation::UseImplementation use_implementation = sha256_implementation::USE_ALL);
+std::string SHA256AutoDetect();
 
 /** Compute multiple double-SHA256's of 64-byte blobs.
  *  output:  pointer to a blocks*32 byte output buffer
@@ -50,4 +38,4 @@ std::string SHA256AutoDetect(sha256_implementation::UseImplementation use_implem
  */
 void SHA256D64(unsigned char* output, const unsigned char* input, size_t blocks);
 
-#endif // BITCOIN_CRYPTO_SHA256_H
+#endif // UNDAL_CRYPTO_SHA256_H

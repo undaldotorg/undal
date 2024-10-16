@@ -1,18 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2024 The Undal Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_KERNEL_CHAINPARAMS_H
-#define BITCOIN_KERNEL_CHAINPARAMS_H
+#ifndef UNDAL_KERNEL_CHAINPARAMS_H
+#define UNDAL_KERNEL_CHAINPARAMS_H
 
 #include <consensus/params.h>
-#include <kernel/messagestartchars.h>
+#include <netaddress.h>
 #include <primitives/block.h>
+#include <protocol.h>
 #include <uint256.h>
-#include <util/chaintype.h>
 #include <util/hash_type.h>
-#include <util/vector.h>
 
 #include <cstdint>
 #include <iterator>
@@ -45,21 +45,17 @@ struct AssumeutxoHash : public BaseHash<uint256> {
  * as valid.
  */
 struct AssumeutxoData {
-    int height;
-
     //! The expected hash of the deserialized UTXO set.
-    AssumeutxoHash hash_serialized;
+    const AssumeutxoHash hash_serialized;
 
-    //! Used to populate the m_chain_tx_count value, which is used during BlockManager::LoadBlockIndex().
+    //! Used to populate the nChainTx value, which is used during BlockManager::LoadBlockIndex().
     //!
     //! We need to hardcode the value here because this is computed cumulatively using block data,
     //! which we do not necessarily have at the time of snapshot load.
-    uint64_t m_chain_tx_count;
-
-    //! The hash of the base block for this snapshot. Used to refer to assumeutxo data
-    //! prior to having a loaded blockindex.
-    uint256 blockhash;
+    const unsigned int nChainTx;
 };
+
+using MapAssumeutxo = std::map<int, const AssumeutxoData>;
 
 /**
  * Holds various statistics on transactions within a chain. Used to estimate
@@ -69,13 +65,13 @@ struct AssumeutxoData {
  */
 struct ChainTxData {
     int64_t nTime;    //!< UNIX timestamp of last known number of transactions
-    uint64_t tx_count; //!< total number of transactions between genesis and that timestamp
+    int64_t nTxCount; //!< total number of transactions between genesis and that timestamp
     double dTxRate;   //!< estimated number of transactions per second after that timestamp
 };
 
 /**
  * CChainParams defines various tweakable parameters of a given instance of the
- * Bitcoin system.
+ * Undal system.
  */
 class CChainParams
 {
@@ -91,15 +87,25 @@ public:
     };
 
     const Consensus::Params& GetConsensus() const { return consensus; }
-    const MessageStartChars& MessageStart() const { return pchMessageStart; }
+    const CMessageHeader::MessageStartChars& MessageStart() const { return pchMessageStart; }
     uint16_t GetDefaultPort() const { return nDefaultPort; }
-    std::vector<int> GetAvailableSnapshotHeights() const;
+    uint16_t GetDefaultPort(Network net) const
+    {
+        return net == NET_I2P ? I2P_SAM31_PORT : GetDefaultPort();
+    }
+    uint16_t GetDefaultPort(const std::string& addr) const
+    {
+        CNetAddr a;
+        return a.SetSpecial(addr) ? GetDefaultPort(a.GetNetwork()) : GetDefaultPort();
+    }
 
     const CBlock& GenesisBlock() const { return genesis; }
     /** Default value for -checkmempool and -checkblockindex argument */
     bool DefaultConsistencyChecks() const { return fDefaultConsistencyChecks; }
+    /** Policy: Filter transactions that do not match well-defined patterns */
+    bool RequireStandard() const { return fRequireStandard; }
     /** If this chain is exclusively used for testing */
-    bool IsTestChain() const { return m_chain_type != ChainType::MAIN; }
+    bool IsTestChain() const { return m_is_test_chain; }
     /** If this chain allows time to be mocked */
     bool IsMockableChain() const { return m_is_mockable_chain; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
@@ -109,10 +115,8 @@ public:
     uint64_t AssumedChainStateSize() const { return m_assumed_chain_state_size; }
     /** Whether it is possible to mine blocks on demand (no retargeting) */
     bool MineBlocksOnDemand() const { return consensus.fPowNoRetargeting; }
-    /** Return the chain type string */
-    std::string GetChainTypeString() const { return ChainTypeToString(m_chain_type); }
-    /** Return the chain type */
-    ChainType GetChainType() const { return m_chain_type; }
+    /** Return the network string */
+    std::string NetworkIDString() const { return strNetworkID; }
     /** Return the list of hostnames to look up for DNS seeds */
     const std::vector<std::string>& DNSSeeds() const { return vSeeds; }
     const std::vector<unsigned char>& Base58Prefix(Base58Type type) const { return base58Prefixes[type]; }
@@ -120,14 +124,9 @@ public:
     const std::vector<uint8_t>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
 
-    std::optional<AssumeutxoData> AssumeutxoForHeight(int height) const
-    {
-        return FindFirst(m_assumeutxo_data, [&](const auto& d) { return d.height == height; });
-    }
-    std::optional<AssumeutxoData> AssumeutxoForBlockhash(const uint256& blockhash) const
-    {
-        return FindFirst(m_assumeutxo_data, [&](const auto& d) { return d.blockhash == blockhash; });
-    }
+    //! Get allowed assumeutxo configuration.
+    //! @see ChainstateManager
+    const MapAssumeutxo& Assumeutxo() const { return m_assumeutxo_data; }
 
     const ChainTxData& TxData() const { return chainTxData; }
 
@@ -161,13 +160,12 @@ public:
     static std::unique_ptr<const CChainParams> SigNet(const SigNetOptions& options);
     static std::unique_ptr<const CChainParams> Main();
     static std::unique_ptr<const CChainParams> TestNet();
-    static std::unique_ptr<const CChainParams> TestNet4();
 
 protected:
-    CChainParams() = default;
+    CChainParams() {}
 
     Consensus::Params consensus;
-    MessageStartChars pchMessageStart;
+    CMessageHeader::MessageStartChars pchMessageStart;
     uint16_t nDefaultPort;
     uint64_t nPruneAfterHeight;
     uint64_t m_assumed_blockchain_size;
@@ -175,16 +173,16 @@ protected:
     std::vector<std::string> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
     std::string bech32_hrp;
-    ChainType m_chain_type;
+    std::string strNetworkID;
     CBlock genesis;
     std::vector<uint8_t> vFixedSeeds;
     bool fDefaultConsistencyChecks;
+    bool fRequireStandard;
+    bool m_is_test_chain;
     bool m_is_mockable_chain;
     CCheckpointData checkpointData;
-    std::vector<AssumeutxoData> m_assumeutxo_data;
+    MapAssumeutxo m_assumeutxo_data;
     ChainTxData chainTxData;
 };
 
-std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& pchMessageStart);
-
-#endif // BITCOIN_KERNEL_CHAINPARAMS_H
+#endif // UNDAL_KERNEL_CHAINPARAMS_H

@@ -7,10 +7,8 @@
 
 #include <blockfilter.h>
 #include <core_io.h>
-#include <primitives/block.h>
 #include <serialize.h>
 #include <streams.h>
-#include <undo.h>
 #include <univalue.h>
 #include <util/strencodings.h>
 
@@ -130,7 +128,9 @@ BOOST_AUTO_TEST_CASE(blockfilter_basic_test)
 BOOST_AUTO_TEST_CASE(blockfilters_json_test)
 {
     UniValue json;
-    if (!json.read(json_tests::blockfilters) || !json.isArray()) {
+    std::string json_data(json_tests::blockfilters,
+                          json_tests::blockfilters + sizeof(json_tests::blockfilters));
+    if (!json.read(json_data) || !json.isArray()) {
         BOOST_ERROR("Parse error.");
         return;
     }
@@ -149,7 +149,8 @@ BOOST_AUTO_TEST_CASE(blockfilters_json_test)
 
         unsigned int pos = 0;
         /*int block_height =*/ test[pos++].getInt<int>();
-        BOOST_CHECK(uint256::FromHex(test[pos++].get_str()));
+        uint256 block_hash;
+        BOOST_CHECK(ParseHashStr(test[pos++].get_str(), block_hash));
 
         CBlock block;
         BOOST_REQUIRE(DecodeHexBlk(block, test[pos++].get_str()));
@@ -164,9 +165,11 @@ BOOST_AUTO_TEST_CASE(blockfilters_json_test)
             tx_undo.vprevout.emplace_back(txout, 0, false);
         }
 
-        uint256 prev_filter_header_basic{*Assert(uint256::FromHex(test[pos++].get_str()))};
+        uint256 prev_filter_header_basic;
+        BOOST_CHECK(ParseHashStr(test[pos++].get_str(), prev_filter_header_basic));
         std::vector<unsigned char> filter_basic = ParseHex(test[pos++].get_str());
-        uint256 filter_header_basic{*Assert(uint256::FromHex(test[pos++].get_str()))};
+        uint256 filter_header_basic;
+        BOOST_CHECK(ParseHashStr(test[pos++].get_str(), filter_header_basic));
 
         BlockFilter computed_filter_basic(BlockFilterType::BASIC, block, block_undo);
         BOOST_CHECK(computed_filter_basic.GetFilter().GetEncoded() == filter_basic);

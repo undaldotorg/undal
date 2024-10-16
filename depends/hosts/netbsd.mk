@@ -2,6 +2,10 @@ netbsd_CFLAGS=-pipe -std=$(C_STANDARD)
 netbsd_CXXFLAGS=-pipe -std=$(CXX_STANDARD)
 
 ifneq ($(LTO),)
+netbsd_CFLAGS += -flto
+netbsd_CXXFLAGS += -flto
+netbsd_LDFLAGS += -flto
+
 netbsd_AR = $(host_toolchain)gcc-ar
 netbsd_NM = $(host_toolchain)gcc-nm
 netbsd_RANLIB = $(host_toolchain)gcc-ranlib
@@ -36,4 +40,4 @@ x86_64_netbsd_CC=$(default_host_CC) -m64
 x86_64_netbsd_CXX=$(default_host_CXX) -m64
 endif
 
-netbsd_cmake_system_name=NetBSD
+netbsd_cmake_system=NetBSD

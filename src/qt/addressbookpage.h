@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_ADDRESSBOOKPAGE_H
-#define BITCOIN_QT_ADDRESSBOOKPAGE_H
+#ifndef UNDAL_QT_ADDRESSBOOKPAGE_H
+#define UNDAL_QT_ADDRESSBOOKPAGE_H
 
 #include <QDialog>
 
@@ -56,7 +56,6 @@ private:
     AddressBookSortFilterProxyModel *proxyModel;
     QMenu *contextMenu;
     QString newAddressToSelect;
-    void updateWindowsTitleWithWalletName();
 
 private Q_SLOTS:
     /** Delete currently selected address entry */
@@ -83,4 +82,4 @@ Q_SIGNALS:
     void sendCoins(QString addr);
 };
 
-#endif // BITCOIN_QT_ADDRESSBOOKPAGE_H
+#endif // UNDAL_QT_ADDRESSBOOKPAGE_H

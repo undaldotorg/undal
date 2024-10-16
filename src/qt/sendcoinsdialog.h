@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_SENDCOINSDIALOG_H
-#define BITCOIN_QT_SENDCOINSDIALOG_H
+#ifndef UNDAL_QT_SENDCOINSDIALOG_H
+#define UNDAL_QT_SENDCOINSDIALOG_H
 
 #include <qt/clientmodel.h>
 #include <qt/walletmodel.h>
@@ -29,7 +29,7 @@ QT_BEGIN_NAMESPACE
 class QUrl;
 QT_END_NAMESPACE
 
-/** Dialog for sending bitcoins */
+/** Dialog for sending undals */
 class SendCoinsDialog : public QDialog
 {
     Q_OBJECT
@@ -111,6 +111,7 @@ private Q_SLOTS:
     void coinControlClipboardFee();
     void coinControlClipboardAfterFee();
     void coinControlClipboardBytes();
+    void coinControlClipboardLowOutput();
     void coinControlClipboardChange();
     void updateFeeSectionControls();
     void updateNumberOfBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, SyncType synctype, SynchronizationState sync_state);
@@ -148,4 +149,4 @@ private:
     QString m_psbt_button_text{tr("Create Unsigned")};
 };
 
-#endif // BITCOIN_QT_SENDCOINSDIALOG_H
+#endif // UNDAL_QT_SENDCOINSDIALOG_H

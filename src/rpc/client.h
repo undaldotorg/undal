@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_RPC_CLIENT_H
-#define BITCOIN_RPC_CLIENT_H
+#ifndef UNDAL_RPC_CLIENT_H
+#define UNDAL_RPC_CLIENT_H
 
 #include <string>
 #include <string_view>
@@ -17,4 +17,9 @@ UniValue RPCConvertValues(const std::string& strMethod, const std::vector<std::s
 /** Convert named arguments to command-specific RPC representation */
 UniValue RPCConvertNamedValues(const std::string& strMethod, const std::vector<std::string>& strParams);
 
-#endif // BITCOIN_RPC_CLIENT_H
+/** Non-RFC4627 JSON parser, accepts internal values (such as numbers, true, false, null)
+ * as well as objects and arrays.
+ */
+UniValue ParseNonRFCJSONValue(std::string_view raw);
+
+#endif // UNDAL_RPC_CLIENT_H

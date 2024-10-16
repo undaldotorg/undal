@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_NODE_CHAINSTATE_H
-#define BITCOIN_NODE_CHAINSTATE_H
+#ifndef UNDAL_NODE_CHAINSTATE_H
+#define UNDAL_NODE_CHAINSTATE_H
 
 #include <util/translation.h>
 #include <validation.h>
@@ -22,13 +22,8 @@ struct ChainstateLoadOptions {
     CTxMemPool* mempool{nullptr};
     bool block_tree_db_in_memory{false};
     bool coins_db_in_memory{false};
-    // Whether to wipe the block tree database when loading it. If set, this
-    // will also set a reindexing flag so any existing block data files will be
-    // scanned and added to the database.
-    bool wipe_block_tree_db{false};
-    // Whether to wipe the chainstate database when loading it. If set, this
-    // will cause the chainstate database to be rebuilt starting from genesis.
-    bool wipe_chainstate_db{false};
+    bool reindex{false};
+    bool reindex_chainstate{false};
     bool prune{false};
     //! Setting require_full_verification to true will require all checks at
     //! check_level (below) to succeed for loading to succeed. Setting it to
@@ -37,6 +32,7 @@ struct ChainstateLoadOptions {
     bool require_full_verification{true};
     int64_t check_blocks{DEFAULT_CHECKBLOCKS};
     int64_t check_level{DEFAULT_CHECKLEVEL};
+    std::function<bool()> check_interrupt;
     std::function<void()> coins_error_cb;
 };
 
@@ -46,8 +42,7 @@ struct ChainstateLoadOptions {
 //! and exit cleanly in the interrupted case.
 enum class ChainstateLoadStatus {
     SUCCESS,
-    FAILURE, //!< Generic failure which reindexing may fix
-    FAILURE_FATAL, //!< Fatal error which should not prompt to reindex
+    FAILURE,
     FAILURE_INCOMPATIBLE_DB,
     FAILURE_INSUFFICIENT_DBCACHE,
     INTERRUPTED,
@@ -74,4 +69,4 @@ ChainstateLoadResult LoadChainstate(ChainstateManager& chainman, const CacheSize
 ChainstateLoadResult VerifyLoadedChainstate(ChainstateManager& chainman, const ChainstateLoadOptions& options);
 } // namespace node
 
-#endif // BITCOIN_NODE_CHAINSTATE_H
+#endif // UNDAL_NODE_CHAINSTATE_H

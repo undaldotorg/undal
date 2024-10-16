@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_SYNC_H
-#define BITCOIN_SYNC_H
+#ifndef UNDAL_SYNC_H
+#define UNDAL_SYNC_H
 
 #ifdef DEBUG_LOCKCONTENTION
 #include <logging.h>
@@ -57,6 +57,7 @@ template <typename MutexType>
 void EnterCritical(const char* pszName, const char* pszFile, int nLine, MutexType* cs, bool fTry = false);
 void LeaveCritical();
 void CheckLastCritical(void* cs, std::string& lockname, const char* guardname, const char* file, int line);
+std::string LocksHeld();
 template <typename MutexType>
 void AssertLockHeldInternal(const char* pszName, const char* pszFile, int nLine, MutexType* cs) EXCLUSIVE_LOCKS_REQUIRED(cs);
 template <typename MutexType>
@@ -135,7 +136,7 @@ using Mutex = AnnotatedMixin<std::mutex>;
  * eventually move all the mutexes into classes so they are not globally
  * visible.
  *
- * See: https://github.com/bitcoin/bitcoin/pull/20272#issuecomment-720755781
+ * See: https://github.com/undal/undal/pull/20272#issuecomment-720755781
  */
 class GlobalMutex : public Mutex { };
 
@@ -206,7 +207,7 @@ public:
 
 protected:
     // needed for reverse_lock
-    UniqueLock() = default;
+    UniqueLock() { }
 
 public:
     /**
@@ -300,10 +301,6 @@ inline MutexType* MaybeCheckNotHeld(MutexType* m) LOCKS_EXCLUDED(m) LOCK_RETURNE
 //! gcc and the -Wreturn-stack-address flag in clang, both enabled by default.
 #define WITH_LOCK(cs, code) (MaybeCheckNotHeld(cs), [&]() -> decltype(auto) { LOCK(cs); code; }())
 
-/** An implementation of a semaphore.
- *
- * See https://en.wikipedia.org/wiki/Semaphore_(programming)
- */
 class CSemaphore
 {
 private:
@@ -312,33 +309,25 @@ private:
     int value;
 
 public:
-    explicit CSemaphore(int init) noexcept : value(init) {}
+    explicit CSemaphore(int init) : value(init) {}
 
-    // Disallow default construct, copy, move.
-    CSemaphore() = delete;
-    CSemaphore(const CSemaphore&) = delete;
-    CSemaphore(CSemaphore&&) = delete;
-    CSemaphore& operator=(const CSemaphore&) = delete;
-    CSemaphore& operator=(CSemaphore&&) = delete;
-
-    void wait() noexcept
+    void wait()
     {
         std::unique_lock<std::mutex> lock(mutex);
         condition.wait(lock, [&]() { return value >= 1; });
         value--;
     }
 
-    bool try_wait() noexcept
+    bool try_wait()
     {
         std::lock_guard<std::mutex> lock(mutex);
-        if (value < 1) {
+        if (value < 1)
             return false;
-        }
         value--;
         return true;
     }
 
-    void post() noexcept
+    void post()
     {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -356,64 +345,45 @@ private:
     bool fHaveGrant;
 
 public:
-    void Acquire() noexcept
+    void Acquire()
     {
-        if (fHaveGrant) {
+        if (fHaveGrant)
             return;
-        }
         sem->wait();
         fHaveGrant = true;
     }
 
-    void Release() noexcept
+    void Release()
     {
-        if (!fHaveGrant) {
+        if (!fHaveGrant)
             return;
-        }
         sem->post();
         fHaveGrant = false;
     }
 
-    bool TryAcquire() noexcept
+    bool TryAcquire()
     {
-        if (!fHaveGrant && sem->try_wait()) {
+        if (!fHaveGrant && sem->try_wait())
             fHaveGrant = true;
-        }
         return fHaveGrant;
     }
 
-    // Disallow copy.
-    CSemaphoreGrant(const CSemaphoreGrant&) = delete;
-    CSemaphoreGrant& operator=(const CSemaphoreGrant&) = delete;
-
-    // Allow move.
-    CSemaphoreGrant(CSemaphoreGrant&& other) noexcept
+    void MoveTo(CSemaphoreGrant& grant)
     {
-        sem = other.sem;
-        fHaveGrant = other.fHaveGrant;
-        other.fHaveGrant = false;
-        other.sem = nullptr;
+        grant.Release();
+        grant.sem = sem;
+        grant.fHaveGrant = fHaveGrant;
+        fHaveGrant = false;
     }
 
-    CSemaphoreGrant& operator=(CSemaphoreGrant&& other) noexcept
-    {
-        Release();
-        sem = other.sem;
-        fHaveGrant = other.fHaveGrant;
-        other.fHaveGrant = false;
-        other.sem = nullptr;
-        return *this;
-    }
+    CSemaphoreGrant() : sem(nullptr), fHaveGrant(false) {}
 
-    CSemaphoreGrant() noexcept : sem(nullptr), fHaveGrant(false) {}
-
-    explicit CSemaphoreGrant(CSemaphore& sema, bool fTry = false) noexcept : sem(&sema), fHaveGrant(false)
+    explicit CSemaphoreGrant(CSemaphore& sema, bool fTry = false) : sem(&sema), fHaveGrant(false)
     {
-        if (fTry) {
+        if (fTry)
             TryAcquire();
-        } else {
+        else
             Acquire();
-        }
     }
 
     ~CSemaphoreGrant()
@@ -421,10 +391,10 @@ public:
         Release();
     }
 
-    explicit operator bool() const noexcept
+    operator bool() const
     {
         return fHaveGrant;
     }
 };
 
-#endif // BITCOIN_SYNC_H
+#endif // UNDAL_SYNC_H

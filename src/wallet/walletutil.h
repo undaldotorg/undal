@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_WALLET_WALLETUTIL_H
-#define BITCOIN_WALLET_WALLETUTIL_H
+#ifndef UNDAL_WALLET_WALLETUTIL_H
+#define UNDAL_WALLET_WALLETUTIL_H
 
 #include <script/descriptor.h>
 #include <util/fs.h>
@@ -53,20 +53,12 @@ enum WalletFlags : uint64_t {
     //! Flag set when a wallet contains no HD seed and no private keys, scripts,
     //! addresses, and other watch only things, and is therefore "blank."
     //!
-    //! The main function this flag serves is to distinguish a blank wallet from
+    //! The only function this flag serves is to distinguish a blank wallet from
     //! a newly created wallet when the wallet database is loaded, to avoid
     //! initialization that should only happen on first run.
     //!
-    //! A secondary function of this flag, which applies to descriptor wallets
-    //! only, is to serve as an ongoing indication that descriptors in the
-    //! wallet should be created manually, and that the wallet should not
-    //! generate automatically generate new descriptors if it is later
-    //! encrypted. To support this behavior, descriptor wallets unlike legacy
-    //! wallets do not automatically unset the BLANK flag when things are
-    //! imported.
-    //!
     //! This flag is also a mandatory flag to prevent previous versions of
-    //! bitcoin from opening the wallet, thinking it was newly created, and
+    //! undal from opening the wallet, thinking it was newly created, and
     //! then improperly reinitializing it.
     WALLET_FLAG_BLANK_WALLET = (1ULL << 33),
 
@@ -85,7 +77,6 @@ class WalletDescriptor
 {
 public:
     std::shared_ptr<Descriptor> descriptor;
-    uint256 id; // Descriptor ID (calculated once at descriptor initialization/deserialization)
     uint64_t creation_time = 0;
     int32_t range_start = 0; // First item in range; start of range, inclusive, i.e. [range_start, range_end). This never changes.
     int32_t range_end = 0; // Item after the last; end of range, exclusive, i.e. [range_start, range_end). This will increment with each TopUp()
@@ -96,15 +87,10 @@ public:
     {
         std::string error;
         FlatSigningProvider keys;
-        auto descs = Parse(str, keys, error, true);
-        if (descs.empty()) {
+        descriptor = Parse(str, keys, error, true);
+        if (!descriptor) {
             throw std::ios_base::failure("Invalid descriptor: " + error);
         }
-        if (descs.size() > 1) {
-            throw std::ios_base::failure("Can't load a multipath descriptor from databases");
-        }
-        descriptor = std::move(descs.at(0));
-        id = DescriptorID(*descriptor);
     }
 
     SERIALIZE_METHODS(WalletDescriptor, obj)
@@ -115,11 +101,23 @@ public:
         SER_READ(obj, obj.DeserializeDescriptor(descriptor_str));
     }
 
-    WalletDescriptor() = default;
-    WalletDescriptor(std::shared_ptr<Descriptor> descriptor, uint64_t creation_time, int32_t range_start, int32_t range_end, int32_t next_index) : descriptor(descriptor), id(DescriptorID(*descriptor)), creation_time(creation_time), range_start(range_start), range_end(range_end), next_index(next_index) { }
+    WalletDescriptor() {}
+    WalletDescriptor(std::shared_ptr<Descriptor> descriptor, uint64_t creation_time, int32_t range_start, int32_t range_end, int32_t next_index) : descriptor(descriptor), creation_time(creation_time), range_start(range_start), range_end(range_end), next_index(next_index) {}
 };
 
-WalletDescriptor GenerateWalletDescriptor(const CExtPubKey& master_key, const OutputType& output_type, bool internal);
+class CWallet;
+class DescriptorScriptPubKeyMan;
+
+/** struct containing information needed for migrating legacy wallets to descriptor wallets */
+struct MigrationData
+{
+    CExtKey master_key;
+    std::vector<std::pair<std::string, int64_t>> watch_descs;
+    std::vector<std::pair<std::string, int64_t>> solvable_descs;
+    std::vector<std::unique_ptr<DescriptorScriptPubKeyMan>> desc_spkms;
+    std::shared_ptr<CWallet> watchonly_wallet{nullptr};
+    std::shared_ptr<CWallet> solvable_wallet{nullptr};
+};
 } // namespace wallet
 
-#endif // BITCOIN_WALLET_WALLETUTIL_H
+#endif // UNDAL_WALLET_WALLETUTIL_H

@@ -4,15 +4,10 @@
 
 #include <bench/bench.h>
 #include <coins.h>
-#include <consensus/amount.h>
-#include <key.h>
 #include <policy/policy.h>
-#include <primitives/transaction.h>
-#include <script/script.h>
 #include <script/signingprovider.h>
 #include <test/util/transaction_utils.h>
 
-#include <cassert>
 #include <vector>
 
 // Microbenchmark for simple accesses to a CCoinsViewCache database. Note from
@@ -20,10 +15,10 @@
 // many times micro-benchmarks of the database showed completely different
 // characteristics than e.g. reindex timings. But that's not a requirement of
 // every benchmark."
-// (https://github.com/bitcoin/bitcoin/issues/7883#issuecomment-224807484)
+// (https://github.com/undal/undal/issues/7883#issuecomment-224807484)
 static void CCoinsCaching(benchmark::Bench& bench)
 {
-    ECC_Context ecc_context{};
+    ECC_Start();
 
     FillableSigningProvider keystore;
     CCoinsView coinsDummy;
@@ -52,6 +47,7 @@ static void CCoinsCaching(benchmark::Bench& bench)
         bool success{AreInputsStandard(tx_1, coins)};
         assert(success);
     });
+    ECC_Stop();
 }
 
 BENCHMARK(CCoinsCaching, benchmark::PriorityLevel::HIGH);

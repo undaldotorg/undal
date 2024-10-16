@@ -1,27 +1,23 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-present The Bitcoin Core developers
+// Copyright (c) 2009-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_SCRIPT_SCRIPT_H
-#define BITCOIN_SCRIPT_SCRIPT_H
+#ifndef UNDAL_SCRIPT_SCRIPT_H
+#define UNDAL_SCRIPT_SCRIPT_H
 
 #include <attributes.h>
 #include <crypto/common.h>
-#include <prevector.h> // IWYU pragma: export
+#include <prevector.h>
 #include <serialize.h>
-#include <uint256.h>
-#include <util/hash_type.h>
 
-#include <cassert>
-#include <cstdint>
-#include <cstring>
+#include <assert.h>
+#include <climits>
 #include <limits>
-#include <span>
 #include <stdexcept>
+#include <stdint.h>
+#include <string.h>
 #include <string>
-#include <type_traits>
-#include <utility>
 #include <vector>
 
 // Maximum number of bytes pushable to the stack
@@ -413,32 +409,6 @@ bool GetScriptOp(CScriptBase::const_iterator& pc, CScriptBase::const_iterator en
 /** Serialized script, used inside transaction inputs and outputs */
 class CScript : public CScriptBase
 {
-private:
-    inline void AppendDataSize(const uint32_t size)
-    {
-        if (size < OP_PUSHDATA1) {
-            insert(end(), static_cast<value_type>(size));
-        } else if (size <= 0xff) {
-            insert(end(), OP_PUSHDATA1);
-            insert(end(), static_cast<value_type>(size));
-        } else if (size <= 0xffff) {
-            insert(end(), OP_PUSHDATA2);
-            value_type data[2];
-            WriteLE16(data, size);
-            insert(end(), std::cbegin(data), std::cend(data));
-        } else {
-            insert(end(), OP_PUSHDATA4);
-            value_type data[4];
-            WriteLE32(data, size);
-            insert(end(), std::cbegin(data), std::cend(data));
-        }
-    }
-
-    void AppendData(std::span<const value_type> data)
-    {
-        insert(end(), data.begin(), data.end());
-    }
-
 protected:
     CScript& push_int64(int64_t n)
     {
@@ -456,13 +426,13 @@ protected:
         }
         return *this;
     }
-
 public:
-    CScript() = default;
-    template <std::input_iterator InputIterator>
-    CScript(InputIterator first, InputIterator last) : CScriptBase{first, last} { }
+    CScript() { }
+    CScript(const_iterator pbegin, const_iterator pend) : CScriptBase(pbegin, pend) { }
+    CScript(std::vector<unsigned char>::const_iterator pbegin, std::vector<unsigned char>::const_iterator pend) : CScriptBase(pbegin, pend) { }
+    CScript(const unsigned char* pbegin, const unsigned char* pend) : CScriptBase(pbegin, pend) { }
 
-    SERIALIZE_METHODS(CScript, obj) { READWRITE(AsBase<CScriptBase>(obj)); }
+    SERIALIZE_METHODS(CScript, obj) { READWRITEAS(CScriptBase, obj); }
 
     explicit CScript(int64_t b) { operator<<(b); }
     explicit CScript(opcodetype b)     { operator<<(b); }
@@ -490,17 +460,33 @@ public:
         return *this;
     }
 
-    CScript& operator<<(std::span<const std::byte> b) LIFETIMEBOUND
+    CScript& operator<<(const std::vector<unsigned char>& b) LIFETIMEBOUND
     {
-        AppendDataSize(b.size());
-        AppendData({reinterpret_cast<const value_type*>(b.data()), b.size()});
+        if (b.size() < OP_PUSHDATA1)
+        {
+            insert(end(), (unsigned char)b.size());
+        }
+        else if (b.size() <= 0xff)
+        {
+            insert(end(), OP_PUSHDATA1);
+            insert(end(), (unsigned char)b.size());
+        }
+        else if (b.size() <= 0xffff)
+        {
+            insert(end(), OP_PUSHDATA2);
+            uint8_t _data[2];
+            WriteLE16(_data, b.size());
+            insert(end(), _data, _data + sizeof(_data));
+        }
+        else
+        {
+            insert(end(), OP_PUSHDATA4);
+            uint8_t _data[4];
+            WriteLE32(_data, b.size());
+            insert(end(), _data, _data + sizeof(_data));
+        }
+        insert(end(), b.begin(), b.end());
         return *this;
-    }
-
-    // For compatibility reasons. In new code, prefer using std::byte instead of uint8_t.
-    CScript& operator<<(std::span<const value_type> b) LIFETIMEBOUND
-    {
-        return *this << std::as_bytes(b);
     }
 
     bool GetOp(const_iterator& pc, opcodetype& opcodeRet, std::vector<unsigned char>& vchRet) const
@@ -530,7 +516,7 @@ public:
     }
 
     /**
-     * Pre-version-0.6, Bitcoin always counted CHECKMULTISIGs
+     * Pre-version-0.6, Undal always counted CHECKMULTISIGs
      * as 20 sigops. With pay-to-script-hash, that changed:
      * CHECKMULTISIGs serialized in scriptSigs are
      * counted more accurately, assuming they are of the form
@@ -543,14 +529,6 @@ public:
      * pay-to-script-hash transactions:
      */
     unsigned int GetSigOpCount(const CScript& scriptSig) const;
-
-    /*
-     * OP_1 <0x4e73>
-     */
-    bool IsPayToAnchor() const;
-    /** Checks if output of IsWitnessProgram comes from a P2A output script
-     */
-    static bool IsPayToAnchor(int version, const std::vector<unsigned char>& program);
 
     bool IsPayToScriptHash() const;
     bool IsPayToWitnessScriptHash() const;
@@ -588,22 +566,13 @@ struct CScriptWitness
     std::vector<std::vector<unsigned char> > stack;
 
     // Some compilers complain without a default constructor
-    CScriptWitness() = default;
+    CScriptWitness() { }
 
     bool IsNull() const { return stack.empty(); }
 
     void SetNull() { stack.clear(); stack.shrink_to_fit(); }
 
     std::string ToString() const;
-};
-
-/** A reference to a CScript: the Hash160 of its serialization */
-class CScriptID : public BaseHash<uint160>
-{
-public:
-    CScriptID() : BaseHash() {}
-    explicit CScriptID(const CScript& in);
-    explicit CScriptID(const uint160& in) : BaseHash(in) {}
 };
 
 /** Test for OP_SUCCESSx opcodes as defined by BIP342. */
@@ -636,4 +605,4 @@ CScript BuildScript(Ts&&... inputs)
     return ret;
 }
 
-#endif // BITCOIN_SCRIPT_SCRIPT_H
+#endif // UNDAL_SCRIPT_SCRIPT_H

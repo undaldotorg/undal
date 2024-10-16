@@ -2,12 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_NODE_TRANSACTION_H
-#define BITCOIN_NODE_TRANSACTION_H
+#ifndef UNDAL_NODE_TRANSACTION_H
+#define UNDAL_NODE_TRANSACTION_H
 
-#include <common/messages.h>
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
+#include <util/error.h>
 
 class CBlockIndex;
 class CTxMemPool;
@@ -16,7 +16,6 @@ struct Params;
 }
 
 namespace node {
-class BlockManager;
 struct NodeContext;
 
 /** Maximum fee rate for sendrawtransaction and testmempoolaccept RPC calls.
@@ -25,12 +24,6 @@ struct NodeContext;
  * by these RPCs and the GUI. This can be overridden with the maxfeerate argument.
  */
 static const CFeeRate DEFAULT_MAX_RAW_TX_FEE_RATE{COIN / 10};
-
-/** Maximum burn value for sendrawtransaction, submitpackage, and testmempoolaccept RPC calls.
- * By default, a transaction with a burn value higher than this will be rejected
- * by these RPCs and the GUI. This can be overridden with the maxburnamount argument.
- */
-static const CAmount DEFAULT_MAX_BURN_AMOUNT{0};
 
 /**
  * Submit a transaction to the mempool and (optionally) relay it to all P2P peers.
@@ -60,10 +53,11 @@ static const CAmount DEFAULT_MAX_BURN_AMOUNT{0};
  * @param[in]  block_index     The block to read from disk, or nullptr
  * @param[in]  mempool         If provided, check mempool for tx
  * @param[in]  hash            The txid
+ * @param[in]  consensusParams The params
  * @param[out] hashBlock       The block hash, if the tx was found via -txindex or block_index
  * @returns                    The tx if found, otherwise nullptr
  */
-CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMemPool* const mempool, const uint256& hash, uint256& hashBlock, const BlockManager& blockman);
+CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMemPool* const mempool, const uint256& hash, const Consensus::Params& consensusParams, uint256& hashBlock);
 } // namespace node
 
-#endif // BITCOIN_NODE_TRANSACTION_H
+#endif // UNDAL_NODE_TRANSACTION_H

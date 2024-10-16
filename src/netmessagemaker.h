@@ -3,21 +3,34 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_NETMESSAGEMAKER_H
-#define BITCOIN_NETMESSAGEMAKER_H
+#ifndef UNDAL_NETMESSAGEMAKER_H
+#define UNDAL_NETMESSAGEMAKER_H
 
 #include <net.h>
 #include <serialize.h>
 
-namespace NetMsg {
+class CNetMsgMaker
+{
+public:
+    explicit CNetMsgMaker(int nVersionIn) : nVersion(nVersionIn){}
+
     template <typename... Args>
-    CSerializedNetMsg Make(std::string msg_type, Args&&... args)
+    CSerializedNetMsg Make(int nFlags, std::string msg_type, Args&&... args) const
     {
         CSerializedNetMsg msg;
         msg.m_type = std::move(msg_type);
-        VectorWriter{msg.data, 0, std::forward<Args>(args)...};
+        CVectorWriter{ SER_NETWORK, nFlags | nVersion, msg.data, 0, std::forward<Args>(args)... };
         return msg;
     }
-} // namespace NetMsg
 
-#endif // BITCOIN_NETMESSAGEMAKER_H
+    template <typename... Args>
+    CSerializedNetMsg Make(std::string msg_type, Args&&... args) const
+    {
+        return Make(0, std::move(msg_type), std::forward<Args>(args)...);
+    }
+
+private:
+    const int nVersion;
+};
+
+#endif // UNDAL_NETMESSAGEMAKER_H

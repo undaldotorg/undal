@@ -2,10 +2,10 @@
 # Copyright (c) 2020-2021 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Script for verifying Bitcoin Core release binaries.
+"""Script for verifying Undal Core release binaries.
 
 This script attempts to download the sum file SHA256SUMS and corresponding
-signature file SHA256SUMS.asc from bitcoincore.org and bitcoin.org and
+signature file SHA256SUMS.asc from undalcore.org and undal.org and
 compares them.
 
 The sum-signature file is signed by a number of builder keys. This script
@@ -15,7 +15,7 @@ here, but by default is based upon local GPG trust settings.
 
 The builder keys are available in the guix.sigs repo:
 
-    https://github.com/bitcoin-core/guix.sigs/tree/main/builder-keys
+    https://github.com/undal-core/guix.sigs/tree/main/builder-keys
 
 If a minimum good, trusted signature threshold is met on the sum file, we then
 download the files specified in SHA256SUMS, and check if the hashes of these
@@ -47,8 +47,8 @@ from pathlib import PurePath, Path
 
 # The primary host; this will fail if we can't retrieve files from here.
 HOST1 = "https://bitcoincore.org"
-HOST2 = "https://bitcoin.org"
-VERSIONPREFIX = "bitcoin-core-"
+HOST2 = "https://undal.org"
+VERSIONPREFIX = "undal-core-"
 SUMS_FILENAME = 'SHA256SUMS'
 SIGNATUREFILENAME = f"{SUMS_FILENAME}.asc"
 
@@ -97,17 +97,23 @@ def bool_from_env(key, default=False) -> bool:
 
 
 VERSION_FORMAT = "<major>.<minor>[.<patch>][-rc[0-9]][-platform]"
-VERSION_EXAMPLE = "22.0 or 23.1-rc1-darwin.dmg or 27.0-x86_64-linux-gnu"
+VERSION_EXAMPLE = "22.0-x86_64 or 23.1-rc1-darwin"
 
 def parse_version_string(version_str):
-    # "<version>[-rcN][-platform]"
-    version_base, _, platform = version_str.partition('-')
-    rc = ""
-    if platform.startswith("rc"): # "<version>-rcN[-platform]"
-        rc, _, platform = platform.partition('-')
-    # else "<version>" or "<version>-platform"
+    parts = version_str.split('-')
+    version_base = parts[0]
+    version_rc = ""
+    version_os = ""
+    if len(parts) == 2:  # "<version>-rcN" or "version-platform"
+        if "rc" in parts[1]:
+            version_rc = parts[1]
+        else:
+            version_os = parts[1]
+    elif len(parts) == 3:  # "<version>-rcN-platform"
+        version_rc = parts[1]
+        version_os = parts[2]
 
-    return version_base, rc, platform
+    return version_base, version_rc, version_os
 
 
 def download_with_wget(remote_file, local_file):
@@ -116,7 +122,7 @@ def download_with_wget(remote_file, local_file):
     return result.returncode == 0, result.stdout.decode().rstrip()
 
 
-def download_lines_with_urllib(url) -> tuple[bool, list[str]]:
+def download_lines_with_urllib(url) -> t.Tuple[bool, t.List[str]]:
     """Get (success, text lines of a file) over HTTP."""
     try:
         return (True, [
@@ -132,7 +138,7 @@ def verify_with_gpg(
     filename,
     signature_filename,
     output_filename: t.Optional[str] = None
-) -> tuple[int, str]:
+) -> t.Tuple[int, str]:
     with tempfile.NamedTemporaryFile() as status_file:
         args = [
             'gpg', '--yes', '--verify', '--verify-options', 'show-primary-uid-only', "--status-file", status_file.name,
@@ -171,12 +177,12 @@ class SigData:
 
 
 def parse_gpg_result(
-    output: list[str]
-) -> tuple[list[SigData], list[SigData], list[SigData]]:
+    output: t.List[str]
+) -> t.Tuple[t.List[SigData], t.List[SigData], t.List[SigData]]:
     """Returns good, unknown, and bad signatures from GPG stdout."""
-    good_sigs: list[SigData] = []
-    unknown_sigs: list[SigData] = []
-    bad_sigs: list[SigData] = []
+    good_sigs: t.List[SigData] = []
+    unknown_sigs: t.List[SigData] = []
+    bad_sigs: t.List[SigData] = []
     total_resolved_sigs = 0
 
     # Ensure that all lines we match on include a prefix that prevents malicious input
@@ -259,7 +265,7 @@ def files_are_equal(filename1, filename2):
 
 
 def get_files_from_hosts_and_compare(
-    hosts: list[str], path: str, filename: str, require_all: bool = False
+    hosts: t.List[str], path: str, filename: str, require_all: bool = False
 ) -> ReturnCode:
     """
     Retrieve the same file from a number of hosts and ensure they have the same contents.
@@ -320,7 +326,7 @@ def get_files_from_hosts_and_compare(
     return ReturnCode.SUCCESS
 
 
-def check_multisig(sums_file: str, sigfilename: str, args: argparse.Namespace) -> tuple[int, str, list[SigData], list[SigData], list[SigData]]:
+def check_multisig(sums_file: str, sigfilename: str, args: argparse.Namespace) -> t.Tuple[int, str, t.List[SigData], t.List[SigData], t.List[SigData]]:
     # check signature
     #
     # We don't write output to a file because this command will almost certainly
@@ -359,8 +365,8 @@ def prompt_yn(prompt) -> bool:
 
 def verify_shasums_signature(
     signature_file_path: str, sums_file_path: str, args: argparse.Namespace
-) -> tuple[
-   ReturnCode, list[SigData], list[SigData], list[SigData], list[SigData]
+) -> t.Tuple[
+   ReturnCode, t.List[SigData], t.List[SigData], t.List[SigData], t.List[SigData]
 ]:
     min_good_sigs = args.min_good_sigs
     gpg_allowed_codes = [0, 2]  # 2 is returned when untrusted signatures are present.
@@ -378,7 +384,7 @@ def verify_shasums_signature(
 
     # Decide which keys we trust, though not "trust" in the GPG sense, but rather
     # which pubkeys convince us that this sums file is legitimate. In other words,
-    # which pubkeys within the Bitcoin community do we trust for the purposes of
+    # which pubkeys within the Undal community do we trust for the purposes of
     # binary verification?
     trusted_keys = set()
     if args.trusted_keys:
@@ -423,14 +429,14 @@ def verify_shasums_signature(
     return (ReturnCode.SUCCESS, good_trusted, good_untrusted, unknown, bad)
 
 
-def parse_sums_file(sums_file_path: str, filename_filter: list[str]) -> list[list[str]]:
+def parse_sums_file(sums_file_path: str, filename_filter: t.List[str]) -> t.List[t.List[str]]:
     # extract hashes/filenames of binaries to verify from hash file;
     # each line has the following format: "<hash> <binary_filename>"
     with open(sums_file_path, 'r', encoding='utf8') as hash_file:
         return [line.split()[:2] for line in hash_file if len(filename_filter) == 0 or any(f in line for f in filename_filter)]
 
 
-def verify_binary_hashes(hashes_to_verify: list[list[str]]) -> tuple[ReturnCode, dict[str, str]]:
+def verify_binary_hashes(hashes_to_verify: t.List[t.List[str]]) -> t.Tuple[ReturnCode, t.Dict[str, str]]:
     offending_files = []
     files_to_hashes = {}
 
@@ -453,7 +459,7 @@ def verify_binary_hashes(hashes_to_verify: list[list[str]]) -> tuple[ReturnCode,
 
 
 def verify_published_handler(args: argparse.Namespace) -> ReturnCode:
-    WORKINGDIR = Path(tempfile.gettempdir()) / f"bitcoin_verify_binaries.{args.version}"
+    WORKINGDIR = Path(tempfile.gettempdir()) / f"undal_verify_binaries.{args.version}"
 
     def cleanup():
         log.info("cleaning up files")
@@ -508,12 +514,10 @@ def verify_published_handler(args: argparse.Namespace) -> ReturnCode:
     # Extract hashes and filenames
     hashes_to_verify = parse_sums_file(SUMS_FILENAME, [os_filter])
     if not hashes_to_verify:
-        available_versions = ["-".join(line[1].split("-")[2:]) for line in parse_sums_file(SUMS_FILENAME, [])]
-        closest_match = difflib.get_close_matches(os_filter, available_versions, cutoff=0, n=1)[0]
-        log.error(f"No files matched the platform specified. Did you mean: {closest_match}")
+        log.error("no files matched the platform specified")
         return ReturnCode.NO_BINARIES_MATCH
 
-    # remove binaries that are known not to be hosted by bitcoincore.org
+    # remove binaries that are known not to be hosted by undalcore.org
     fragments_to_remove = ['-unsigned', '-debug', '-codesignatures']
     for fragment in fragments_to_remove:
         nobinaries = [i for i in hashes_to_verify if fragment in i[1]]
@@ -673,7 +677,7 @@ def main():
     pub_parser.set_defaults(func=verify_published_handler)
     pub_parser.add_argument(
         'version', type=str, help=(
-            f'version of the bitcoin release to download; of the format '
+            f'version of the undal release to download; of the format '
             f'{VERSION_FORMAT}. Example: {VERSION_EXAMPLE}')
     )
     pub_parser.add_argument(
@@ -686,7 +690,7 @@ def main():
         default=bool_from_env('BINVERIFY_REQUIRE_ALL_HOSTS'),
         help=(
             f'If set, require all hosts ({HOST1}, {HOST2}) to provide signatures. '
-            '(Sometimes bitcoin.org lags behind bitcoincore.org.)')
+            '(Sometimes undal.org lags behind undalcore.org.)')
     )
 
     bin_parser = subparsers.add_parser("bin", help="Verify local binaries.")

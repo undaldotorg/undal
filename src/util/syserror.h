@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_UTIL_SYSERROR_H
-#define BITCOIN_UTIL_SYSERROR_H
+#ifndef UNDAL_UTIL_SYSERROR_H
+#define UNDAL_UTIL_SYSERROR_H
 
 #include <string>
 
@@ -13,8 +13,4 @@
  */
 std::string SysErrorString(int err);
 
-#if defined(WIN32)
-std::string Win32ErrorString(int err);
-#endif
-
-#endif // BITCOIN_UTIL_SYSERROR_H
+#endif // UNDAL_UTIL_SYSERROR_H

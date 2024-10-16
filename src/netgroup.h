@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_NETGROUP_H
-#define BITCOIN_NETGROUP_H
+#ifndef UNDAL_NETGROUP_H
+#define UNDAL_NETGROUP_H
 
 #include <netaddress.h>
 #include <uint256.h>
@@ -41,16 +41,6 @@ public:
      */
     uint32_t GetMappedAS(const CNetAddr& address) const;
 
-    /**
-     *  Analyze and log current health of ASMap based buckets.
-     */
-    void ASMapHealthCheck(const std::vector<CNetAddr>& clearnet_addrs) const;
-
-    /**
-     *  Indicates whether ASMap is being used for clearnet bucketing.
-     */
-    bool UsingASMap() const;
-
 private:
     /** Compressed IP->ASN mapping, loaded from a file when a node starts.
      *
@@ -73,4 +63,4 @@ private:
     const std::vector<bool> m_asmap;
 };
 
-#endif // BITCOIN_NETGROUP_H
+#endif // UNDAL_NETGROUP_H

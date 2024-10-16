@@ -4,10 +4,10 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test orphaned block rewards in the wallet."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
 
-class OrphanedBlockRewardTest(BitcoinTestFramework):
+class OrphanedBlockRewardTest(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -65,12 +65,9 @@ class OrphanedBlockRewardTest(BitcoinTestFramework):
         assert_equal(self.nodes[0].getbestblockhash(), orig_chain_tip)
         self.generate(self.nodes[0], 3)
 
-        balances = self.nodes[1].getbalances()
-        del balances["lastprocessedblock"]
-        del pre_reorg_conf_bals["lastprocessedblock"]
-        assert_equal(balances, pre_reorg_conf_bals)
+        assert_equal(self.nodes[1].getbalances(), pre_reorg_conf_bals)
         assert_equal(self.nodes[1].gettransaction(txid)["details"][0]["abandoned"], True)
 
 
 if __name__ == '__main__':
-    OrphanedBlockRewardTest(__file__).main()
+    OrphanedBlockRewardTest().main()

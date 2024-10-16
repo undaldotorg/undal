@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_WALLETINITINTERFACE_H
-#define BITCOIN_WALLETINITINTERFACE_H
+#ifndef UNDAL_WALLETINITINTERFACE_H
+#define UNDAL_WALLETINITINTERFACE_H
 
 class ArgsManager;
 
@@ -22,9 +22,9 @@ public:
     /** Add wallets that should be opened to list of chain clients. */
     virtual void Construct(node::NodeContext& node) const = 0;
 
-    virtual ~WalletInitInterface() = default;
+    virtual ~WalletInitInterface() {}
 };
 
 extern const WalletInitInterface& g_wallet_init_interface;
 
-#endif // BITCOIN_WALLETINITINTERFACE_H
+#endif // UNDAL_WALLETINITINTERFACE_H

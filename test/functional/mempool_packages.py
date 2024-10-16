@@ -7,11 +7,12 @@
 from decimal import Decimal
 
 from test_framework.messages import (
+    COIN,
     DEFAULT_ANCESTOR_LIMIT,
     DEFAULT_DESCENDANT_LIMIT,
 )
 from test_framework.p2p import P2PTxInvStore
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -24,15 +25,19 @@ CUSTOM_DESCENDANT_LIMIT = 10
 assert CUSTOM_DESCENDANT_LIMIT >= CUSTOM_ANCESTOR_LIMIT
 
 
-class MempoolPackagesTest(BitcoinTestFramework):
+class MempoolPackagesTest(UndalTestFramework):
+    def add_options(self, parser):
+        self.add_wallet_options(parser)
+
     def set_test_params(self):
         self.num_nodes = 2
-        # whitelist peers to speed up tx relay / mempool sync
-        self.noban_tx_relay = True
         self.extra_args = [
             [
+                "-maxorphantx=1000",
+                "-whitelist=noban@127.0.0.1",  # immediate tx relay
             ],
             [
+                "-maxorphantx=1000",
                 "-limitancestorcount={}".format(CUSTOM_ANCESTOR_LIMIT),
                 "-limitdescendantcount={}".format(CUSTOM_DESCENDANT_LIMIT),
             ],
@@ -41,6 +46,10 @@ class MempoolPackagesTest(BitcoinTestFramework):
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])
         self.wallet.rescan_utxos()
+
+        if self.is_specified_wallet_compiled():
+            self.nodes[0].createwallet("watch_wallet", disable_private_keys=True)
+            self.nodes[0].importaddress(self.wallet.get_address())
 
         peer_inv_store = self.nodes[0].add_p2p_connection(P2PTxInvStore()) # keep track of invs
 
@@ -54,6 +63,13 @@ class MempoolPackagesTest(BitcoinTestFramework):
             ancestor_vsize += t["tx"].get_vsize()
             ancestor_fees += t["fee"]
             self.wallet.sendrawtransaction(from_node=self.nodes[0], tx_hex=t["hex"])
+            # Check that listunspent ancestor{count, size, fees} yield the correct results
+            if self.is_specified_wallet_compiled():
+                wallet_unspent = self.nodes[0].listunspent(minconf=0)
+                this_unspent = next(utxo_info for utxo_info in wallet_unspent if utxo_info["txid"] == t["txid"])
+                assert_equal(this_unspent['ancestorcount'], i + 1)
+                assert_equal(this_unspent['ancestorsize'], ancestor_vsize)
+                assert_equal(this_unspent['ancestorfees'], ancestor_fees * COIN)
 
         # Wait until mempool transactions have passed initial broadcast (sent inv and received getdata)
         # Otherwise, getrawmempool may be inconsistent with getmempoolentry if unbroadcast changes in between
@@ -197,13 +213,13 @@ class MempoolPackagesTest(BitcoinTestFramework):
         assert set(mempool1).issubset(set(mempool0))
         for tx in chain[:CUSTOM_ANCESTOR_LIMIT]:
             assert tx in mempool1
-            entry0 = self.nodes[0].getmempoolentry(tx)
-            entry1 = self.nodes[1].getmempoolentry(tx)
-            assert not entry0['unbroadcast']
-            assert not entry1['unbroadcast']
-            assert_equal(entry1['fees']['base'], entry0['fees']['base'])
-            assert_equal(entry1['vsize'], entry0['vsize'])
-            assert_equal(entry1['depends'], entry0['depends'])
+        # TODO: more detailed check of node1's mempool (fees etc.)
+        # check transaction unbroadcast info (should be false if in both mempools)
+        mempool = self.nodes[0].getrawmempool(True)
+        for tx in mempool:
+            assert_equal(mempool[tx]['unbroadcast'], False)
+
+        # TODO: test ancestor size limits
 
         # Now test descendant chain limits
 
@@ -249,14 +265,10 @@ class MempoolPackagesTest(BitcoinTestFramework):
             assert tx in mempool1
         for tx in chain[CUSTOM_DESCENDANT_LIMIT:]:
             assert tx not in mempool1
-        for tx in mempool1:
-            entry0 = self.nodes[0].getmempoolentry(tx)
-            entry1 = self.nodes[1].getmempoolentry(tx)
-            assert not entry0['unbroadcast']
-            assert not entry1['unbroadcast']
-            assert_equal(entry1['fees']['base'], entry0['fees']['base'])
-            assert_equal(entry1['vsize'], entry0['vsize'])
-            assert_equal(entry1['depends'], entry0['depends'])
+        # TODO: more detailed check of node1's mempool (fees etc.)
+
+        # TODO: test descendant size limits
+
         # Test reorg handling
         # First, the basics:
         self.generate(self.nodes[0], 1)
@@ -298,4 +310,4 @@ class MempoolPackagesTest(BitcoinTestFramework):
         self.sync_blocks()
 
 if __name__ == '__main__':
-    MempoolPackagesTest(__file__).main()
+    MempoolPackagesTest().main()

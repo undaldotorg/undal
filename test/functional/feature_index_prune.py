@@ -3,8 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test indices in conjunction with prune."""
-import os
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
@@ -12,7 +11,7 @@ from test_framework.util import (
 )
 
 
-class FeatureIndexPruneTest(BitcoinTestFramework):
+class FeatureIndexPruneTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 4
         self.extra_args = [
@@ -31,7 +30,7 @@ class FeatureIndexPruneTest(BitcoinTestFramework):
         expected_stats = {
             'coinstatsindex': {'synced': True, 'best_block_height': height}
         }
-        self.wait_until(lambda: self.nodes[1].getindexinfo() == expected_stats, timeout=150)
+        self.wait_until(lambda: self.nodes[1].getindexinfo() == expected_stats)
 
         expected = {**expected_filter, **expected_stats}
         self.wait_until(lambda: self.nodes[2].getindexinfo() == expected)
@@ -128,9 +127,8 @@ class FeatureIndexPruneTest(BitcoinTestFramework):
         self.log.info("make sure we get an init error when starting the nodes again with the indices")
         filter_msg = "Error: basic block filter index best block of the index goes beyond pruned data. Please disable the index or reindex (which will download the whole blockchain again)"
         stats_msg = "Error: coinstatsindex best block of the index goes beyond pruned data. Please disable the index or reindex (which will download the whole blockchain again)"
-        end_msg = f"{os.linesep}Error: A fatal internal error occurred, see debug.log for details: Failed to start indexes, shutting down.."
         for i, msg in enumerate([filter_msg, stats_msg, filter_msg]):
-            self.nodes[i].assert_start_raises_init_error(extra_args=self.extra_args[i], expected_msg=msg+end_msg)
+            self.nodes[i].assert_start_raises_init_error(extra_args=self.extra_args[i], expected_msg=msg)
 
         self.log.info("make sure the nodes start again with the indices and an additional -reindex arg")
         for i in range(3):
@@ -155,4 +153,4 @@ class FeatureIndexPruneTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    FeatureIndexPruneTest(__file__).main()
+    FeatureIndexPruneTest().main()

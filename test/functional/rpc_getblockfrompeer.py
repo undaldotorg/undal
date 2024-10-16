@@ -15,14 +15,14 @@ from test_framework.p2p import (
     P2P_SERVICES,
     P2PInterface,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
 
 
-class GetBlockFromPeerTest(BitcoinTestFramework):
+class GetBlockFromPeerTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 3
         self.extra_args = [
@@ -58,7 +58,7 @@ class GetBlockFromPeerTest(BitcoinTestFramework):
         self.log.info("Node 0 should only have the header for node 1's block 3")
         x = next(filter(lambda x: x['hash'] == short_tip, self.nodes[0].getchaintips()))
         assert_equal(x['status'], "headers-only")
-        assert_raises_rpc_error(-1, "Block not available (not fully downloaded)", self.nodes[0].getblock, short_tip)
+        assert_raises_rpc_error(-1, "Block not found on disk", self.nodes[0].getblock, short_tip)
 
         self.log.info("Fetch block from node 1")
         peers = self.nodes[0].getpeerinfo()
@@ -117,11 +117,9 @@ class GetBlockFromPeerTest(BitcoinTestFramework):
         assert_raises_rpc_error(-1, error_msg, self.nodes[1].getblockfrompeer, blockhash, node1_interface_id)
 
         self.log.info("Connect pruned node")
+        # We need to generate more blocks to be able to prune
         self.connect_nodes(0, 2)
         pruned_node = self.nodes[2]
-        self.sync_blocks([self.nodes[0], pruned_node])
-
-        # We need to generate more blocks to be able to prune
         self.generate(self.nodes[0], 400, sync_fun=self.no_op)
         self.sync_blocks([self.nodes[0], pruned_node])
         pruneheight = pruned_node.pruneblockchain(300)
@@ -154,4 +152,4 @@ class GetBlockFromPeerTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    GetBlockFromPeerTest(__file__).main()
+    GetBlockFromPeerTest().main()

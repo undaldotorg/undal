@@ -12,14 +12,14 @@ from io import BytesIO
 import os
 
 from test_framework.p2p import P2PDataStore, MESSAGEMAP
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
 
 TIME_SIZE = 8
 LENGTH_SIZE = 4
 MSGTYPE_SIZE = 12
 
-def mini_parser(dat_file: str) -> None:
+def mini_parser(dat_file):
     """Parse a data file created by CaptureMessageToFile.
 
     From the data file we'll only check the structure.
@@ -51,14 +51,14 @@ def mini_parser(dat_file: str) -> None:
 
 
 
-class MessageCaptureTest(BitcoinTestFramework):
+class MessageCaptureTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [["-capturemessages"]]
         self.setup_clean_chain = True
 
     def run_test(self):
-        capturedir = self.nodes[0].chain_path / "message_capture"
+        capturedir = os.path.join(self.nodes[0].datadir, "regtest/message_capture")
         # Connect a node so that the handshake occurs
         self.nodes[0].add_p2p_connection(P2PDataStore())
         self.nodes[0].disconnect_p2ps()
@@ -69,4 +69,4 @@ class MessageCaptureTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    MessageCaptureTest(__file__).main()
+    MessageCaptureTest().main()

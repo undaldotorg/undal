@@ -3,7 +3,10 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test -startupnotify."""
-from test_framework.test_framework import BitcoinTestFramework
+
+import os
+
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -12,17 +15,18 @@ NODE_DIR = "node0"
 FILE_NAME = "test.txt"
 
 
-class StartupNotifyTest(BitcoinTestFramework):
+class StartupNotifyTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
+        self.disable_syscall_sandbox = True
 
     def run_test(self):
-        tmpdir_file = self.nodes[0].datadir_path / FILE_NAME
-        assert not tmpdir_file.exists()
+        tmpdir_file = os.path.join(self.options.tmpdir, NODE_DIR, FILE_NAME)
+        assert not os.path.exists(tmpdir_file)
 
         self.log.info("Test -startupnotify command is run when node starts")
         self.restart_node(0, extra_args=[f"-startupnotify=echo '{FILE_NAME}' >> {NODE_DIR}/{FILE_NAME}"])
-        self.wait_until(lambda: tmpdir_file.exists())
+        self.wait_until(lambda: os.path.exists(tmpdir_file))
 
         self.log.info("Test -startupnotify is executed once")
 
@@ -39,4 +43,4 @@ class StartupNotifyTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    StartupNotifyTest(__file__).main()
+    StartupNotifyTest().main()

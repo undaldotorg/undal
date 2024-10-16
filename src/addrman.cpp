@@ -3,8 +3,6 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <bitcoin-build-config.h> // IWYU pragma: keep
-
 #include <addrman.h>
 #include <addrman_impl.h>
 
@@ -47,22 +45,22 @@ static constexpr auto ADDRMAN_TEST_WINDOW{40min};
 
 int AddrInfo::GetTriedBucket(const uint256& nKey, const NetGroupManager& netgroupman) const
 {
-    uint64_t hash1 = (HashWriter{} << nKey << GetKey()).GetCheapHash();
-    uint64_t hash2 = (HashWriter{} << nKey << netgroupman.GetGroup(*this) << (hash1 % ADDRMAN_TRIED_BUCKETS_PER_GROUP)).GetCheapHash();
+    uint64_t hash1 = (CHashWriter(SER_GETHASH, 0) << nKey << GetKey()).GetCheapHash();
+    uint64_t hash2 = (CHashWriter(SER_GETHASH, 0) << nKey << netgroupman.GetGroup(*this) << (hash1 % ADDRMAN_TRIED_BUCKETS_PER_GROUP)).GetCheapHash();
     return hash2 % ADDRMAN_TRIED_BUCKET_COUNT;
 }
 
 int AddrInfo::GetNewBucket(const uint256& nKey, const CNetAddr& src, const NetGroupManager& netgroupman) const
 {
     std::vector<unsigned char> vchSourceGroupKey = netgroupman.GetGroup(src);
-    uint64_t hash1 = (HashWriter{} << nKey << netgroupman.GetGroup(*this) << vchSourceGroupKey).GetCheapHash();
-    uint64_t hash2 = (HashWriter{} << nKey << vchSourceGroupKey << (hash1 % ADDRMAN_NEW_BUCKETS_PER_SOURCE_GROUP)).GetCheapHash();
+    uint64_t hash1 = (CHashWriter(SER_GETHASH, 0) << nKey << netgroupman.GetGroup(*this) << vchSourceGroupKey).GetCheapHash();
+    uint64_t hash2 = (CHashWriter(SER_GETHASH, 0) << nKey << vchSourceGroupKey << (hash1 % ADDRMAN_NEW_BUCKETS_PER_SOURCE_GROUP)).GetCheapHash();
     return hash2 % ADDRMAN_NEW_BUCKET_COUNT;
 }
 
-int AddrInfo::GetBucketPosition(const uint256& nKey, bool fNew, int bucket) const
+int AddrInfo::GetBucketPosition(const uint256& nKey, bool fNew, int nBucket) const
 {
-    uint64_t hash1 = (HashWriter{} << nKey << (fNew ? uint8_t{'N'} : uint8_t{'K'}) << bucket << GetKey()).GetCheapHash();
+    uint64_t hash1 = (CHashWriter(SER_GETHASH, 0) << nKey << (fNew ? uint8_t{'N'} : uint8_t{'K'}) << nBucket << GetKey()).GetCheapHash();
     return hash1 % ADDRMAN_BUCKET_SIZE;
 }
 
@@ -139,12 +137,12 @@ void AddrManImpl::Serialize(Stream& s_) const
      * * format version byte (@see `Format`)
      * * lowest compatible format version byte. This is used to help old software decide
      *   whether to parse the file. For example:
-     *   * Bitcoin Core version N knows how to parse up to format=3. If a new format=4 is
+     *   * Undal Core version N knows how to parse up to format=3. If a new format=4 is
      *     introduced in version N+1 that is compatible with format=3 and it is known that
      *     version N will be able to parse it, then version N+1 will write
      *     (format=4, lowest_compatible=3) in the first two bytes of the file, and so
      *     version N will still try to parse it.
-     *   * Bitcoin Core version N+2 introduces a new incompatible format=5. It will write
+     *   * Undal Core version N+2 introduces a new incompatible format=5. It will write
      *     (format=5, lowest_compatible=5) and so any versions that do not know how to parse
      *     format=5 will not try to read the file.
      * * nKey
@@ -173,7 +171,8 @@ void AddrManImpl::Serialize(Stream& s_) const
      */
 
     // Always serialize in the latest version (FILE_FORMAT).
-    ParamsStream s{s_, CAddress::V2_DISK};
+
+    OverrideStream<Stream> s(&s_, s_.GetType(), s_.GetVersion() | ADDRV2_FORMAT);
 
     s << static_cast<uint8_t>(FILE_FORMAT);
 
@@ -188,7 +187,7 @@ void AddrManImpl::Serialize(Stream& s_) const
 
     int nUBuckets = ADDRMAN_NEW_BUCKET_COUNT ^ (1 << 30);
     s << nUBuckets;
-    std::unordered_map<nid_type, int> mapUnkIds;
+    std::unordered_map<int, int> mapUnkIds;
     int nIds = 0;
     for (const auto& entry : mapInfo) {
         mapUnkIds[entry.first] = nIds;
@@ -237,8 +236,14 @@ void AddrManImpl::Unserialize(Stream& s_)
     Format format;
     s_ >> Using<CustomUintFormatter<1>>(format);
 
-    const auto ser_params = (format >= Format::V3_BIP155 ? CAddress::V2_DISK : CAddress::V1_DISK);
-    ParamsStream s{s_, ser_params};
+    int stream_version = s_.GetVersion();
+    if (format >= Format::V3_BIP155) {
+        // Add ADDRV2_FORMAT to the version so that the CNetAddr and CAddress
+        // unserialize methods know that an address in addrv2 format is coming.
+        stream_version |= ADDRV2_FORMAT;
+    }
+
+    OverrideStream<Stream> s(&s_, s_.GetType(), stream_version);
 
     uint8_t compat;
     s >> compat;
@@ -342,7 +347,7 @@ void AddrManImpl::Unserialize(Stream& s_)
         serialized_asmap_checksum == supplied_asmap_checksum};
 
     if (!restore_bucketing) {
-        LogDebug(BCLog::ADDRMAN, "Bucketing method was updated, re-bucketing addrman entries from disk\n");
+        LogPrint(BCLog::ADDRMAN, "Bucketing method was updated, re-bucketing addrman entries from disk\n");
     }
 
     for (auto bucket_entry : bucket_entries) {
@@ -387,7 +392,7 @@ void AddrManImpl::Unserialize(Stream& s_)
         }
     }
     if (nLost + nLostUnk > 0) {
-        LogDebug(BCLog::ADDRMAN, "addrman lost %i new and %i tried addresses due to collisions or invalid addresses\n", nLostUnk, nLost);
+        LogPrint(BCLog::ADDRMAN, "addrman lost %i new and %i tried addresses due to collisions or invalid addresses\n", nLostUnk, nLost);
     }
 
     const int check_code{CheckAddrman()};
@@ -398,7 +403,7 @@ void AddrManImpl::Unserialize(Stream& s_)
     }
 }
 
-AddrInfo* AddrManImpl::Find(const CService& addr, nid_type* pnId)
+AddrInfo* AddrManImpl::Find(const CService& addr, int* pnId)
 {
     AssertLockHeld(cs);
 
@@ -413,11 +418,11 @@ AddrInfo* AddrManImpl::Find(const CService& addr, nid_type* pnId)
     return nullptr;
 }
 
-AddrInfo* AddrManImpl::Create(const CAddress& addr, const CNetAddr& addrSource, nid_type* pnId)
+AddrInfo* AddrManImpl::Create(const CAddress& addr, const CNetAddr& addrSource, int* pnId)
 {
     AssertLockHeld(cs);
 
-    nid_type nId = nIdCount++;
+    int nId = nIdCount++;
     mapInfo[nId] = AddrInfo(addr, addrSource);
     mapAddr[addr] = nId;
     mapInfo[nId].nRandomPos = vRandom.size();
@@ -438,8 +443,8 @@ void AddrManImpl::SwapRandom(unsigned int nRndPos1, unsigned int nRndPos2) const
 
     assert(nRndPos1 < vRandom.size() && nRndPos2 < vRandom.size());
 
-    nid_type nId1 = vRandom[nRndPos1];
-    nid_type nId2 = vRandom[nRndPos2];
+    int nId1 = vRandom[nRndPos1];
+    int nId2 = vRandom[nRndPos2];
 
     const auto it_1{mapInfo.find(nId1)};
     const auto it_2{mapInfo.find(nId2)};
@@ -453,7 +458,7 @@ void AddrManImpl::SwapRandom(unsigned int nRndPos1, unsigned int nRndPos2) const
     vRandom[nRndPos2] = nId1;
 }
 
-void AddrManImpl::Delete(nid_type nId)
+void AddrManImpl::Delete(int nId)
 {
     AssertLockHeld(cs);
 
@@ -476,19 +481,19 @@ void AddrManImpl::ClearNew(int nUBucket, int nUBucketPos)
 
     // if there is an entry in the specified bucket, delete it.
     if (vvNew[nUBucket][nUBucketPos] != -1) {
-        nid_type nIdDelete = vvNew[nUBucket][nUBucketPos];
+        int nIdDelete = vvNew[nUBucket][nUBucketPos];
         AddrInfo& infoDelete = mapInfo[nIdDelete];
         assert(infoDelete.nRefCount > 0);
         infoDelete.nRefCount--;
         vvNew[nUBucket][nUBucketPos] = -1;
-        LogDebug(BCLog::ADDRMAN, "Removed %s from new[%i][%i]\n", infoDelete.ToStringAddrPort(), nUBucket, nUBucketPos);
+        LogPrint(BCLog::ADDRMAN, "Removed %s from new[%i][%i]\n", infoDelete.ToStringAddrPort(), nUBucket, nUBucketPos);
         if (infoDelete.nRefCount == 0) {
             Delete(nIdDelete);
         }
     }
 }
 
-void AddrManImpl::MakeTried(AddrInfo& info, nid_type nId)
+void AddrManImpl::MakeTried(AddrInfo& info, int nId)
 {
     AssertLockHeld(cs);
 
@@ -515,7 +520,7 @@ void AddrManImpl::MakeTried(AddrInfo& info, nid_type nId)
     // first make space to add it (the existing tried entry there is moved to new, deleting whatever is there).
     if (vvTried[nKBucket][nKBucketPos] != -1) {
         // find an item to evict
-        nid_type nIdEvict = vvTried[nKBucket][nKBucketPos];
+        int nIdEvict = vvTried[nKBucket][nKBucketPos];
         assert(mapInfo.count(nIdEvict) == 1);
         AddrInfo& infoOld = mapInfo[nIdEvict];
 
@@ -536,7 +541,7 @@ void AddrManImpl::MakeTried(AddrInfo& info, nid_type nId)
         vvNew[nUBucket][nUBucketPos] = nIdEvict;
         nNew++;
         m_network_counts[infoOld.GetNetwork()].n_new++;
-        LogDebug(BCLog::ADDRMAN, "Moved %s from tried[%i][%i] to new[%i][%i] to make space\n",
+        LogPrint(BCLog::ADDRMAN, "Moved %s from tried[%i][%i] to new[%i][%i] to make space\n",
                  infoOld.ToStringAddrPort(), nKBucket, nKBucketPos, nUBucket, nUBucketPos);
     }
     assert(vvTried[nKBucket][nKBucketPos] == -1);
@@ -554,7 +559,7 @@ bool AddrManImpl::AddSingle(const CAddress& addr, const CNetAddr& source, std::c
     if (!addr.IsRoutable())
         return false;
 
-    nid_type nId;
+    int nId;
     AddrInfo* pinfo = Find(addr, &nId);
 
     // Do not set a penalty for a source's self-announcement
@@ -587,10 +592,11 @@ bool AddrManImpl::AddSingle(const CAddress& addr, const CNetAddr& source, std::c
             return false;
 
         // stochastic test: previous nRefCount == N: 2^N times harder to increase it
-        if (pinfo->nRefCount > 0) {
-            const int nFactor{1 << pinfo->nRefCount};
-            if (insecure_rand.randrange(nFactor) != 0) return false;
-        }
+        int nFactor = 1;
+        for (int n = 0; n < pinfo->nRefCount; n++)
+            nFactor *= 2;
+        if (nFactor > 1 && (insecure_rand.randrange(nFactor) != 0))
+            return false;
     } else {
         pinfo = Create(addr, source, &nId);
         pinfo->nTime = std::max(NodeSeconds{0s}, pinfo->nTime - time_penalty);
@@ -611,9 +617,8 @@ bool AddrManImpl::AddSingle(const CAddress& addr, const CNetAddr& source, std::c
             ClearNew(nUBucket, nUBucketPos);
             pinfo->nRefCount++;
             vvNew[nUBucket][nUBucketPos] = nId;
-            const auto mapped_as{m_netgroupman.GetMappedAS(addr)};
-            LogDebug(BCLog::ADDRMAN, "Added %s%s to new[%i][%i]\n",
-                     addr.ToStringAddrPort(), (mapped_as ? strprintf(" mapped to AS%i", mapped_as) : ""), nUBucket, nUBucketPos);
+            LogPrint(BCLog::ADDRMAN, "Added %s mapped to AS%i to new[%i][%i]\n",
+                     addr.ToStringAddrPort(), m_netgroupman.GetMappedAS(addr), nUBucket, nUBucketPos);
         } else {
             if (pinfo->nRefCount == 0) {
                 Delete(nId);
@@ -627,7 +632,7 @@ bool AddrManImpl::Good_(const CService& addr, bool test_before_evict, NodeSecond
 {
     AssertLockHeld(cs);
 
-    nid_type nId;
+    int nId;
 
     m_last_good = time;
 
@@ -663,7 +668,7 @@ bool AddrManImpl::Good_(const CService& addr, bool test_before_evict, NodeSecond
         }
         // Output the entry we'd be colliding with, for debugging purposes
         auto colliding_entry = mapInfo.find(vvTried[tried_bucket][tried_bucket_pos]);
-        LogDebug(BCLog::ADDRMAN, "Collision with %s while attempting to move %s to tried table. Collisions=%d\n",
+        LogPrint(BCLog::ADDRMAN, "Collision with %s while attempting to move %s to tried table. Collisions=%d\n",
                  colliding_entry != mapInfo.end() ? colliding_entry->second.ToStringAddrPort() : "",
                  addr.ToStringAddrPort(),
                  m_tried_collisions.size());
@@ -671,9 +676,8 @@ bool AddrManImpl::Good_(const CService& addr, bool test_before_evict, NodeSecond
     } else {
         // move nId to the tried tables
         MakeTried(info, nId);
-        const auto mapped_as{m_netgroupman.GetMappedAS(addr)};
-        LogDebug(BCLog::ADDRMAN, "Moved %s%s to tried[%i][%i]\n",
-                 addr.ToStringAddrPort(), (mapped_as ? strprintf(" mapped to AS%i", mapped_as) : ""), tried_bucket, tried_bucket_pos);
+        LogPrint(BCLog::ADDRMAN, "Moved %s mapped to AS%i to tried[%i][%i]\n",
+                 addr.ToStringAddrPort(), m_netgroupman.GetMappedAS(addr), tried_bucket, tried_bucket_pos);
         return true;
     }
 }
@@ -685,7 +689,7 @@ bool AddrManImpl::Add_(const std::vector<CAddress>& vAddr, const CNetAddr& sourc
         added += AddSingle(*it, source, time_penalty) ? 1 : 0;
     }
     if (added > 0) {
-        LogDebug(BCLog::ADDRMAN, "Added %i addresses (of %i) from %s: %i tried, %i new\n", added, vAddr.size(), source.ToStringAddr(), nTried, nNew);
+        LogPrint(BCLog::ADDRMAN, "Added %i addresses (of %i) from %s: %i tried, %i new\n", added, vAddr.size(), source.ToStringAddr(), nTried, nNew);
     }
     return added > 0;
 }
@@ -710,106 +714,76 @@ void AddrManImpl::Attempt_(const CService& addr, bool fCountFailure, NodeSeconds
     }
 }
 
-std::pair<CAddress, NodeSeconds> AddrManImpl::Select_(bool new_only, const std::unordered_set<Network>& networks) const
+std::pair<CAddress, NodeSeconds> AddrManImpl::Select_(bool newOnly) const
 {
     AssertLockHeld(cs);
 
     if (vRandom.empty()) return {};
 
-    size_t new_count = nNew;
-    size_t tried_count = nTried;
+    if (newOnly && nNew == 0) return {};
 
-    if (!networks.empty()) {
-        new_count = 0;
-        tried_count = 0;
-        for (auto& network : networks) {
-            auto it = m_network_counts.find(network);
-            if (it == m_network_counts.end()) {
-                continue;
+    // Use a 50% chance for choosing between tried and new table entries.
+    if (!newOnly &&
+       (nTried > 0 && (nNew == 0 || insecure_rand.randbool() == 0))) {
+        // use a tried node
+        double fChanceFactor = 1.0;
+        while (1) {
+            // Pick a tried bucket, and an initial position in that bucket.
+            int nKBucket = insecure_rand.randrange(ADDRMAN_TRIED_BUCKET_COUNT);
+            int nKBucketPos = insecure_rand.randrange(ADDRMAN_BUCKET_SIZE);
+            // Iterate over the positions of that bucket, starting at the initial one,
+            // and looping around.
+            int i;
+            for (i = 0; i < ADDRMAN_BUCKET_SIZE; ++i) {
+                if (vvTried[nKBucket][(nKBucketPos + i) % ADDRMAN_BUCKET_SIZE] != -1) break;
             }
-            auto counts = it->second;
-            new_count += counts.n_new;
-            tried_count += counts.n_tried;
+            // If the bucket is entirely empty, start over with a (likely) different one.
+            if (i == ADDRMAN_BUCKET_SIZE) continue;
+            // Find the entry to return.
+            int nId = vvTried[nKBucket][(nKBucketPos + i) % ADDRMAN_BUCKET_SIZE];
+            const auto it_found{mapInfo.find(nId)};
+            assert(it_found != mapInfo.end());
+            const AddrInfo& info{it_found->second};
+            // With probability GetChance() * fChanceFactor, return the entry.
+            if (insecure_rand.randbits(30) < fChanceFactor * info.GetChance() * (1 << 30)) {
+                LogPrint(BCLog::ADDRMAN, "Selected %s from tried\n", info.ToStringAddrPort());
+                return {info, info.m_last_try};
+            }
+            // Otherwise start over with a (likely) different bucket, and increased chance factor.
+            fChanceFactor *= 1.2;
         }
-    }
-
-    if (new_only && new_count == 0) return {};
-    if (new_count + tried_count == 0) return {};
-
-    // Decide if we are going to search the new or tried table
-    // If either option is viable, use a 50% chance to choose
-    bool search_tried;
-    if (new_only || tried_count == 0) {
-        search_tried = false;
-    } else if (new_count == 0) {
-        search_tried = true;
     } else {
-        search_tried = insecure_rand.randbool();
-    }
-
-    const int bucket_count{search_tried ? ADDRMAN_TRIED_BUCKET_COUNT : ADDRMAN_NEW_BUCKET_COUNT};
-
-    // Loop through the addrman table until we find an appropriate entry
-    double chance_factor = 1.0;
-    while (1) {
-        // Pick a bucket, and an initial position in that bucket.
-        int bucket = insecure_rand.randrange(bucket_count);
-        int initial_position = insecure_rand.randrange(ADDRMAN_BUCKET_SIZE);
-
-        // Iterate over the positions of that bucket, starting at the initial one,
-        // and looping around.
-        int i, position;
-        nid_type node_id;
-        for (i = 0; i < ADDRMAN_BUCKET_SIZE; ++i) {
-            position = (initial_position + i) % ADDRMAN_BUCKET_SIZE;
-            node_id = GetEntry(search_tried, bucket, position);
-            if (node_id != -1) {
-                if (!networks.empty()) {
-                    const auto it{mapInfo.find(node_id)};
-                    if (Assume(it != mapInfo.end()) && networks.contains(it->second.GetNetwork())) break;
-                } else {
-                    break;
-                }
+        // use a new node
+        double fChanceFactor = 1.0;
+        while (1) {
+            // Pick a new bucket, and an initial position in that bucket.
+            int nUBucket = insecure_rand.randrange(ADDRMAN_NEW_BUCKET_COUNT);
+            int nUBucketPos = insecure_rand.randrange(ADDRMAN_BUCKET_SIZE);
+            // Iterate over the positions of that bucket, starting at the initial one,
+            // and looping around.
+            int i;
+            for (i = 0; i < ADDRMAN_BUCKET_SIZE; ++i) {
+                if (vvNew[nUBucket][(nUBucketPos + i) % ADDRMAN_BUCKET_SIZE] != -1) break;
             }
+            // If the bucket is entirely empty, start over with a (likely) different one.
+            if (i == ADDRMAN_BUCKET_SIZE) continue;
+            // Find the entry to return.
+            int nId = vvNew[nUBucket][(nUBucketPos + i) % ADDRMAN_BUCKET_SIZE];
+            const auto it_found{mapInfo.find(nId)};
+            assert(it_found != mapInfo.end());
+            const AddrInfo& info{it_found->second};
+            // With probability GetChance() * fChanceFactor, return the entry.
+            if (insecure_rand.randbits(30) < fChanceFactor * info.GetChance() * (1 << 30)) {
+                LogPrint(BCLog::ADDRMAN, "Selected %s from new\n", info.ToStringAddrPort());
+                return {info, info.m_last_try};
+            }
+            // Otherwise start over with a (likely) different bucket, and increased chance factor.
+            fChanceFactor *= 1.2;
         }
-
-        // If the bucket is entirely empty, start over with a (likely) different one.
-        if (i == ADDRMAN_BUCKET_SIZE) continue;
-
-        // Find the entry to return.
-        const auto it_found{mapInfo.find(node_id)};
-        assert(it_found != mapInfo.end());
-        const AddrInfo& info{it_found->second};
-
-        // With probability GetChance() * chance_factor, return the entry.
-        if (insecure_rand.randbits<30>() < chance_factor * info.GetChance() * (1 << 30)) {
-            LogDebug(BCLog::ADDRMAN, "Selected %s from %s\n", info.ToStringAddrPort(), search_tried ? "tried" : "new");
-            return {info, info.m_last_try};
-        }
-
-        // Otherwise start over with a (likely) different bucket, and increased chance factor.
-        chance_factor *= 1.2;
     }
 }
 
-nid_type AddrManImpl::GetEntry(bool use_tried, size_t bucket, size_t position) const
-{
-    AssertLockHeld(cs);
-
-    if (use_tried) {
-        if (Assume(position < ADDRMAN_BUCKET_SIZE) && Assume(bucket < ADDRMAN_TRIED_BUCKET_COUNT)) {
-            return vvTried[bucket][position];
-        }
-    } else {
-        if (Assume(position < ADDRMAN_BUCKET_SIZE) && Assume(bucket < ADDRMAN_NEW_BUCKET_COUNT)) {
-            return vvNew[bucket][position];
-        }
-    }
-
-    return -1;
-}
-
-std::vector<CAddress> AddrManImpl::GetAddr_(size_t max_addresses, size_t max_pct, std::optional<Network> network, const bool filtered) const
+std::vector<CAddress> AddrManImpl::GetAddr_(size_t max_addresses, size_t max_pct, std::optional<Network> network) const
 {
     AssertLockHeld(cs);
 
@@ -839,36 +813,12 @@ std::vector<CAddress> AddrManImpl::GetAddr_(size_t max_addresses, size_t max_pct
         if (network != std::nullopt && ai.GetNetClass() != network) continue;
 
         // Filter for quality
-        if (ai.IsTerrible(now) && filtered) continue;
+        if (ai.IsTerrible(now)) continue;
 
         addresses.push_back(ai);
     }
-    LogDebug(BCLog::ADDRMAN, "GetAddr returned %d random addresses\n", addresses.size());
+    LogPrint(BCLog::ADDRMAN, "GetAddr returned %d random addresses\n", addresses.size());
     return addresses;
-}
-
-std::vector<std::pair<AddrInfo, AddressPosition>> AddrManImpl::GetEntries_(bool from_tried) const
-{
-    AssertLockHeld(cs);
-
-    const int bucket_count = from_tried ? ADDRMAN_TRIED_BUCKET_COUNT : ADDRMAN_NEW_BUCKET_COUNT;
-    std::vector<std::pair<AddrInfo, AddressPosition>> infos;
-    for (int bucket = 0; bucket < bucket_count; ++bucket) {
-        for (int position = 0; position < ADDRMAN_BUCKET_SIZE; ++position) {
-            nid_type id = GetEntry(from_tried, bucket, position);
-            if (id >= 0) {
-                AddrInfo info = mapInfo.at(id);
-                AddressPosition location = AddressPosition(
-                    from_tried,
-                    /*multiplicity_in=*/from_tried ? 1 : info.nRefCount,
-                    bucket,
-                    position);
-                infos.emplace_back(info, location);
-            }
-        }
-    }
-
-    return infos;
 }
 
 void AddrManImpl::Connected_(const CService& addr, NodeSeconds time)
@@ -910,8 +860,8 @@ void AddrManImpl::ResolveCollisions_()
 {
     AssertLockHeld(cs);
 
-    for (std::set<nid_type>::iterator it = m_tried_collisions.begin(); it != m_tried_collisions.end();) {
-        nid_type id_new = *it;
+    for (std::set<int>::iterator it = m_tried_collisions.begin(); it != m_tried_collisions.end();) {
+        int id_new = *it;
 
         bool erase_collision = false;
 
@@ -929,7 +879,7 @@ void AddrManImpl::ResolveCollisions_()
             } else if (vvTried[tried_bucket][tried_bucket_pos] != -1) { // The position in the tried bucket is not empty
 
                 // Get the to-be-evicted address that is being tested
-                nid_type id_old = vvTried[tried_bucket][tried_bucket_pos];
+                int id_old = vvTried[tried_bucket][tried_bucket_pos];
                 AddrInfo& info_old = mapInfo[id_old];
 
                 const auto current_time{Now<NodeSeconds>()};
@@ -941,7 +891,7 @@ void AddrManImpl::ResolveCollisions_()
 
                     // Give address at least 60 seconds to successfully connect
                     if (current_time - info_old.m_last_try > 60s) {
-                        LogDebug(BCLog::ADDRMAN, "Replacing %s with %s in tried table\n", info_old.ToStringAddrPort(), info_new.ToStringAddrPort());
+                        LogPrint(BCLog::ADDRMAN, "Replacing %s with %s in tried table\n", info_old.ToStringAddrPort(), info_new.ToStringAddrPort());
 
                         // Replaces an existing address already in the tried table with the new address
                         Good_(info_new, false, current_time);
@@ -951,7 +901,7 @@ void AddrManImpl::ResolveCollisions_()
                     // If the collision hasn't resolved in some reasonable amount of time,
                     // just evict the old entry -- we must not be able to
                     // connect to it for some reason.
-                    LogDebug(BCLog::ADDRMAN, "Unable to test; replacing %s with %s in tried table anyway\n", info_old.ToStringAddrPort(), info_new.ToStringAddrPort());
+                    LogPrint(BCLog::ADDRMAN, "Unable to test; replacing %s with %s in tried table anyway\n", info_old.ToStringAddrPort(), info_new.ToStringAddrPort());
                     Good_(info_new, false, current_time);
                     erase_collision = true;
                 }
@@ -975,11 +925,11 @@ std::pair<CAddress, NodeSeconds> AddrManImpl::SelectTriedCollision_()
 
     if (m_tried_collisions.size() == 0) return {};
 
-    std::set<nid_type>::iterator it = m_tried_collisions.begin();
+    std::set<int>::iterator it = m_tried_collisions.begin();
 
     // Selects a random element from m_tried_collisions
     std::advance(it, insecure_rand.randrange(m_tried_collisions.size()));
-    nid_type id_new = *it;
+    int id_new = *it;
 
     // If id_new not found in mapInfo remove it from m_tried_collisions
     if (mapInfo.count(id_new) != 1) {
@@ -1064,15 +1014,15 @@ int AddrManImpl::CheckAddrman() const
     LOG_TIME_MILLIS_WITH_CATEGORY_MSG_ONCE(
         strprintf("new %i, tried %i, total %u", nNew, nTried, vRandom.size()), BCLog::ADDRMAN);
 
-    std::unordered_set<nid_type> setTried;
-    std::unordered_map<nid_type, int> mapNew;
+    std::unordered_set<int> setTried;
+    std::unordered_map<int, int> mapNew;
     std::unordered_map<Network, NewTriedCount> local_counts;
 
     if (vRandom.size() != (size_t)(nTried + nNew))
         return -7;
 
     for (const auto& entry : mapInfo) {
-        nid_type n = entry.first;
+        int n = entry.first;
         const AddrInfo& info = entry.second;
         if (info.fInTried) {
             if (!TicksSinceEpoch<std::chrono::seconds>(info.m_last_success)) {
@@ -1214,31 +1164,22 @@ std::pair<CAddress, NodeSeconds> AddrManImpl::SelectTriedCollision()
     return ret;
 }
 
-std::pair<CAddress, NodeSeconds> AddrManImpl::Select(bool new_only, const std::unordered_set<Network>& networks) const
+std::pair<CAddress, NodeSeconds> AddrManImpl::Select(bool newOnly) const
 {
     LOCK(cs);
     Check();
-    auto addrRet = Select_(new_only, networks);
+    auto addrRet = Select_(newOnly);
     Check();
     return addrRet;
 }
 
-std::vector<CAddress> AddrManImpl::GetAddr(size_t max_addresses, size_t max_pct, std::optional<Network> network, const bool filtered) const
+std::vector<CAddress> AddrManImpl::GetAddr(size_t max_addresses, size_t max_pct, std::optional<Network> network) const
 {
     LOCK(cs);
     Check();
-    auto addresses = GetAddr_(max_addresses, max_pct, network, filtered);
+    auto addresses = GetAddr_(max_addresses, max_pct, network);
     Check();
     return addresses;
-}
-
-std::vector<std::pair<AddrInfo, AddressPosition>> AddrManImpl::GetEntries(bool from_tried) const
-{
-    LOCK(cs);
-    Check();
-    auto addrInfos = GetEntries_(from_tried);
-    Check();
-    return addrInfos;
 }
 
 void AddrManImpl::Connected(const CService& addr, NodeSeconds time)
@@ -1284,12 +1225,12 @@ void AddrMan::Unserialize(Stream& s_)
 }
 
 // explicit instantiation
-template void AddrMan::Serialize(HashedSourceWriter<AutoFile>&) const;
-template void AddrMan::Serialize(DataStream&) const;
-template void AddrMan::Unserialize(AutoFile&);
-template void AddrMan::Unserialize(HashVerifier<AutoFile>&);
-template void AddrMan::Unserialize(DataStream&);
-template void AddrMan::Unserialize(HashVerifier<DataStream>&);
+template void AddrMan::Serialize(HashedSourceWriter<CAutoFile>& s) const;
+template void AddrMan::Serialize(CDataStream& s) const;
+template void AddrMan::Unserialize(CAutoFile& s);
+template void AddrMan::Unserialize(CHashVerifier<CAutoFile>& s);
+template void AddrMan::Unserialize(CDataStream& s);
+template void AddrMan::Unserialize(CHashVerifier<CDataStream>& s);
 
 size_t AddrMan::Size(std::optional<Network> net, std::optional<bool> in_new) const
 {
@@ -1321,19 +1262,14 @@ std::pair<CAddress, NodeSeconds> AddrMan::SelectTriedCollision()
     return m_impl->SelectTriedCollision();
 }
 
-std::pair<CAddress, NodeSeconds> AddrMan::Select(bool new_only, const std::unordered_set<Network>& networks) const
+std::pair<CAddress, NodeSeconds> AddrMan::Select(bool newOnly) const
 {
-    return m_impl->Select(new_only, networks);
+    return m_impl->Select(newOnly);
 }
 
-std::vector<CAddress> AddrMan::GetAddr(size_t max_addresses, size_t max_pct, std::optional<Network> network, const bool filtered) const
+std::vector<CAddress> AddrMan::GetAddr(size_t max_addresses, size_t max_pct, std::optional<Network> network) const
 {
-    return m_impl->GetAddr(max_addresses, max_pct, network, filtered);
-}
-
-std::vector<std::pair<AddrInfo, AddressPosition>> AddrMan::GetEntries(bool use_tried) const
-{
-    return m_impl->GetEntries(use_tried);
+    return m_impl->GetAddr(max_addresses, max_pct, network);
 }
 
 void AddrMan::Connected(const CService& addr, NodeSeconds time)

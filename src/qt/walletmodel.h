@@ -2,10 +2,15 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_WALLETMODEL_H
-#define BITCOIN_QT_WALLETMODEL_H
+#ifndef UNDAL_QT_WALLETMODEL_H
+#define UNDAL_QT_WALLETMODEL_H
+
+#if defined(HAVE_CONFIG_H)
+#include <config/undal-config.h>
+#endif
 
 #include <key.h>
+#include <script/standard.h>
 
 #include <qt/walletmodeltransaction.h>
 
@@ -43,7 +48,7 @@ QT_BEGIN_NAMESPACE
 class QTimer;
 QT_END_NAMESPACE
 
-/** Interface to Bitcoin wallet from Qt view code. */
+/** Interface to Undal wallet from Qt view code. */
 class WalletModel : public QObject
 {
     Q_OBJECT
@@ -130,7 +135,7 @@ public:
     UnlockContext requestUnlock();
 
     bool bumpFee(uint256 hash, uint256& new_hash);
-    void displayAddress(std::string sAddress) const;
+    bool displayAddress(std::string sAddress) const;
 
     static bool isWalletEnabled();
 
@@ -238,4 +243,4 @@ public Q_SLOTS:
     void pollBalanceChanged();
 };
 
-#endif // BITCOIN_QT_WALLETMODEL_H
+#endif // UNDAL_QT_WALLETMODEL_H

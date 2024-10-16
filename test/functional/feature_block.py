@@ -4,6 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test block processing."""
 import copy
+import struct
 import time
 
 from test_framework.blocktools import (
@@ -13,6 +14,7 @@ from test_framework.blocktools import (
     get_legacy_sigopcount_block,
     MAX_BLOCK_SIGOPS,
 )
+from test_framework.key import ECKey
 from test_framework.messages import (
     CBlock,
     COIN,
@@ -42,17 +44,17 @@ from test_framework.script import (
     OP_INVALIDOPCODE,
     OP_RETURN,
     OP_TRUE,
-    sign_input_legacy,
+    SIGHASH_ALL,
+    LegacySignatureHash,
 )
 from test_framework.script_util import (
     script_to_p2sh_script,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
 )
-from test_framework.wallet_util import generate_keypair
 from data import invalid_txs
 
 
@@ -66,7 +68,7 @@ class CBrokenBlock(CBlock):
     def serialize(self, with_witness=False):
         r = b""
         r += super(CBlock, self).serialize()
-        r += (255).to_bytes(1, "little") + len(self.vtx).to_bytes(8, "little")
+        r += struct.pack("<BQ", 255, len(self.vtx))
         for tx in self.vtx:
             if with_witness:
                 r += tx.serialize_with_witness()
@@ -81,7 +83,7 @@ class CBrokenBlock(CBlock):
 DUPLICATE_COINBASE_SCRIPT_SIG = b'\x01\x78'  # Valid for block at height 120
 
 
-class FullBlockTest(BitcoinTestFramework):
+class FullBlockTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -96,7 +98,9 @@ class FullBlockTest(BitcoinTestFramework):
         self.bootstrap_p2p()  # Add one p2p connection to the node
 
         self.block_heights = {}
-        self.coinbase_key, self.coinbase_pubkey = generate_keypair()
+        self.coinbase_key = ECKey()
+        self.coinbase_key.generate()
+        self.coinbase_pubkey = self.coinbase_key.get_pubkey().get_bytes()
         self.tip = None
         self.blocks = {}
         self.genesis_hash = int(self.nodes[0].getbestblockhash(), 16)
@@ -358,7 +362,7 @@ class FullBlockTest(BitcoinTestFramework):
         b26 = self.update_block(26, [])
         self.send_blocks([b26], success=False, reject_reason='bad-cb-length', reconnect=True)
 
-        # Extend the b26 chain to make sure bitcoind isn't accepting b26
+        # Extend the b26 chain to make sure undald isn't accepting b26
         b27 = self.next_block(27, spend=out[7])
         self.send_blocks([b27], False)
 
@@ -370,7 +374,7 @@ class FullBlockTest(BitcoinTestFramework):
         b28 = self.update_block(28, [])
         self.send_blocks([b28], success=False, reject_reason='bad-cb-length', reconnect=True)
 
-        # Extend the b28 chain to make sure bitcoind isn't accepting b28
+        # Extend the b28 chain to make sure undald isn't accepting b28
         b29 = self.next_block(29, spend=out[7])
         self.send_blocks([b29], False)
 
@@ -537,8 +541,12 @@ class FullBlockTest(BitcoinTestFramework):
             # second input is corresponding P2SH output from b39
             tx.vin.append(CTxIn(COutPoint(b39.vtx[i].sha256, 0), b''))
             # Note: must pass the redeem_script (not p2sh_script) to the signature hash function
-            tx.vin[1].scriptSig = CScript([redeem_script])
-            sign_input_legacy(tx, 1, redeem_script, self.coinbase_key)
+            (sighash, err) = LegacySignatureHash(redeem_script, tx, 1, SIGHASH_ALL)
+            sig = self.coinbase_key.sign_ecdsa(sighash) + bytes(bytearray([SIGHASH_ALL]))
+            scriptSig = CScript([sig, redeem_script])
+
+            tx.vin[1].scriptSig = scriptSig
+            tx.rehash()
             new_txs.append(tx)
             lastOutpoint = COutPoint(tx.sha256, 0)
 
@@ -926,7 +934,7 @@ class FullBlockTest(BitcoinTestFramework):
         assert_equal(b64a.get_weight(), MAX_BLOCK_WEIGHT + 8 * 4)
         self.send_blocks([b64a], success=False, reject_reason='non-canonical ReadCompactSize()')
 
-        # bitcoind doesn't disconnect us for sending a bloated block, but if we subsequently
+        # undald doesn't disconnect us for sending a bloated block, but if we subsequently
         # resend the header message, it won't send us the getdata message again. Just
         # disconnect and reconnect and then call sync_blocks.
         # TODO: improve this test to be less dependent on P2P DOS behaviour.
@@ -1147,7 +1155,7 @@ class FullBlockTest(BitcoinTestFramework):
         #
         #    The tx'es must be unsigned and pass the node's mempool policy.  It is unsigned for the
         #    rather obscure reason that the Python signature code does not distinguish between
-        #    Low-S and High-S values (whereas the bitcoin code has custom code which does so);
+        #    Low-S and High-S values (whereas the undal code has custom code which does so);
         #    as a result of which, the odds are 50% that the python code will use the right
         #    value and the transaction will be accepted into the mempool. Until we modify the
         #    test framework to support low-S signing, we are out of luck.
@@ -1262,10 +1270,6 @@ class FullBlockTest(BitcoinTestFramework):
         b89a = self.update_block("89a", [tx])
         self.send_blocks([b89a], success=False, reject_reason='bad-txns-inputs-missingorspent', reconnect=True)
 
-        # Don't use v2transport for the large reorg, which is too slow with the unoptimized python ChaCha20 implementation
-        if self.options.v2transport:
-            self.nodes[0].disconnect_p2ps()
-            self.helper_peer = self.nodes[0].add_p2p_connection(P2PDataStore(), supports_v2_p2p=False)
         self.log.info("Test a re-org of one week's worth of blocks (1088 blocks)")
 
         self.move_tip(88)
@@ -1326,10 +1330,8 @@ class FullBlockTest(BitcoinTestFramework):
         block.vtx.extend(tx_list)
 
     # this is a little handier to use than the version in blocktools.py
-    def create_tx(self, spend_tx, n, value, output_script=None):
-        if output_script is None:
-            output_script = CScript([OP_TRUE, OP_DROP] * 15 + [OP_TRUE])
-        return create_tx_with_script(spend_tx, n, amount=value, output_script=output_script)
+    def create_tx(self, spend_tx, n, value, script=CScript([OP_TRUE, OP_DROP] * 15 + [OP_TRUE])):
+        return create_tx_with_script(spend_tx, n, amount=value, script_pub_key=script)
 
     # sign a transaction, using the key we know about
     # this signs input 0 in tx, which is assumed to be spending output 0 in spend_tx
@@ -1338,19 +1340,16 @@ class FullBlockTest(BitcoinTestFramework):
         if (scriptPubKey[0] == OP_TRUE):  # an anyone-can-spend
             tx.vin[0].scriptSig = CScript()
             return
-        sign_input_legacy(tx, 0, spend_tx.vout[0].scriptPubKey, self.coinbase_key)
+        (sighash, err) = LegacySignatureHash(spend_tx.vout[0].scriptPubKey, tx, 0, SIGHASH_ALL)
+        tx.vin[0].scriptSig = CScript([self.coinbase_key.sign_ecdsa(sighash) + bytes(bytearray([SIGHASH_ALL]))])
 
-    def create_and_sign_transaction(self, spend_tx, value, output_script=None):
-        if output_script is None:
-            output_script = CScript([OP_TRUE])
-        tx = self.create_tx(spend_tx, 0, value, output_script=output_script)
+    def create_and_sign_transaction(self, spend_tx, value, script=CScript([OP_TRUE])):
+        tx = self.create_tx(spend_tx, 0, value, script)
         self.sign_tx(tx, spend_tx)
         tx.rehash()
         return tx
 
-    def next_block(self, number, spend=None, additional_coinbase_value=0, *, script=None, version=4):
-        if script is None:
-            script = CScript([OP_TRUE])
+    def next_block(self, number, spend=None, additional_coinbase_value=0, script=CScript([OP_TRUE]), *, version=4):
         if self.tip is None:
             base_block_hash = self.genesis_hash
             block_time = int(time.time()) + 1
@@ -1367,7 +1366,7 @@ class FullBlockTest(BitcoinTestFramework):
         else:
             coinbase.vout[0].nValue += spend.vout[0].nValue - 1  # all but one satoshi to fees
             coinbase.rehash()
-            tx = self.create_tx(spend, 0, 1, output_script=script)  # spend 1 satoshi
+            tx = self.create_tx(spend, 0, 1, script)  # spend 1 satoshi
             self.sign_tx(tx, spend)
             tx.rehash()
             block = create_block(base_block_hash, coinbase, block_time, version=version, txlist=[tx])
@@ -1440,4 +1439,4 @@ class FullBlockTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    FullBlockTest(__file__).main()
+    FullBlockTest().main()

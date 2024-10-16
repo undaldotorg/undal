@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_INDEX_COINSTATSINDEX_H
-#define BITCOIN_INDEX_COINSTATSINDEX_H
+#ifndef UNDAL_INDEX_COINSTATSINDEX_H
+#define UNDAL_INDEX_COINSTATSINDEX_H
 
 #include <crypto/muhash.h>
 #include <index/base.h>
@@ -38,18 +38,18 @@ private:
     CAmount m_total_unspendables_scripts{0};
     CAmount m_total_unspendables_unclaimed_rewards{0};
 
-    [[nodiscard]] bool ReverseBlock(const CBlock& block, const CBlockIndex* pindex);
+    bool ReverseBlock(const CBlock& block, const CBlockIndex* pindex);
 
     bool AllowPrune() const override { return true; }
 
 protected:
-    bool CustomInit(const std::optional<interfaces::BlockRef>& block) override;
+    bool CustomInit(const std::optional<interfaces::BlockKey>& block) override;
 
     bool CustomCommit(CDBBatch& batch) override;
 
     bool CustomAppend(const interfaces::BlockInfo& block) override;
 
-    bool CustomRewind(const interfaces::BlockRef& current_tip, const interfaces::BlockRef& new_tip) override;
+    bool CustomRewind(const interfaces::BlockKey& current_tip, const interfaces::BlockKey& new_tip) override;
 
     BaseIndex::DB& GetDB() const override { return *m_db; }
 
@@ -64,4 +64,4 @@ public:
 /// The global UTXO set hash object.
 extern std::unique_ptr<CoinStatsIndex> g_coin_stats_index;
 
-#endif // BITCOIN_INDEX_COINSTATSINDEX_H
+#endif // UNDAL_INDEX_COINSTATSINDEX_H

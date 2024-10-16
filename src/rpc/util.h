@@ -2,46 +2,24 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_RPC_UTIL_H
-#define BITCOIN_RPC_UTIL_H
+#ifndef UNDAL_RPC_UTIL_H
+#define UNDAL_RPC_UTIL_H
 
-#include <addresstype.h>
-#include <consensus/amount.h>
 #include <node/transaction.h>
 #include <outputtype.h>
+#include <protocol.h>
 #include <pubkey.h>
 #include <rpc/protocol.h>
 #include <rpc/request.h>
 #include <script/script.h>
 #include <script/sign.h>
-#include <uint256.h>
+#include <script/standard.h>
 #include <univalue.h>
 #include <util/check.h>
 
-#include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <initializer_list>
-#include <map>
-#include <optional>
 #include <string>
-#include <string_view>
-#include <type_traits>
-#include <utility>
 #include <variant>
 #include <vector>
-
-class JSONRPCRequest;
-enum ServiceFlags : uint64_t;
-enum class OutputType;
-struct FlatSigningProvider;
-struct bilingual_str;
-namespace common {
-enum class PSBTError;
-} // namespace common
-namespace node {
-enum class TransactionError;
-} // namespace node
 
 static constexpr bool DEFAULT_RPC_DOC_CHECK{
 #ifdef RPC_DOC_CHECK
@@ -64,6 +42,7 @@ extern const std::string UNIX_EPOCH_TIME;
 extern const std::string EXAMPLE_ADDRESS[2];
 
 class FillableSigningProvider;
+class CPubKey;
 class CScript;
 struct Sections;
 
@@ -95,19 +74,10 @@ void RPCTypeCheckObj(const UniValue& o,
  * Utilities: convert hex-encoded Values
  * (throws error if not hex).
  */
-uint256 ParseHashV(const UniValue& v, std::string_view name);
-uint256 ParseHashO(const UniValue& o, std::string_view strKey);
-std::vector<unsigned char> ParseHexV(const UniValue& v, std::string_view name);
-std::vector<unsigned char> ParseHexO(const UniValue& o, std::string_view strKey);
-
-/**
- * Parses verbosity from provided UniValue.
- *
- * @param[in] arg The verbosity argument as a bool (true) or int (0, 1, 2,...)
- * @param[in] default_verbosity The value to return if verbosity argument is null
- * @returns An integer describing the verbosity level (e.g. 0, 1, 2, etc.)
- */
-int ParseVerbosity(const UniValue& arg, int default_verbosity);
+uint256 ParseHashV(const UniValue& v, std::string strName);
+uint256 ParseHashO(const UniValue& o, std::string strKey);
+std::vector<unsigned char> ParseHexV(const UniValue& v, std::string strName);
+std::vector<unsigned char> ParseHexO(const UniValue& o, std::string strKey);
 
 /**
  * Validate and return a CAmount from a UniValue number or string.
@@ -117,11 +87,6 @@ int ParseVerbosity(const UniValue& arg, int default_verbosity);
  * @returns a CAmount if the various checks pass.
  */
 CAmount AmountFromValue(const UniValue& value, int decimals = 8);
-/**
- * Parse a json number or string, denoting BTC/kvB, into a CFeeRate (sat/kvB).
- * Reject negative values or rates larger than 1BTC/kvB.
- */
-CFeeRate ParseFeeRate(const UniValue& json);
 
 using RPCArgList = std::vector<std::pair<std::string, UniValue>>;
 std::string HelpExampleCli(const std::string& methodname, const std::string& args);
@@ -131,25 +96,24 @@ std::string HelpExampleRpcNamed(const std::string& methodname, const RPCArgList&
 
 CPubKey HexToPubKey(const std::string& hex_in);
 CPubKey AddrToPubKey(const FillableSigningProvider& keystore, const std::string& addr_in);
-CTxDestination AddAndGetMultisigDestination(const int required, const std::vector<CPubKey>& pubkeys, OutputType type, FlatSigningProvider& keystore, CScript& script_out);
+CTxDestination AddAndGetMultisigDestination(const int required, const std::vector<CPubKey>& pubkeys, OutputType type, FillableSigningProvider& keystore, CScript& script_out);
 
 UniValue DescribeAddress(const CTxDestination& dest);
-
-/** Parse a sighash string representation and raise an RPC error if it is invalid. */
-int ParseSighashString(const UniValue& sighash);
 
 //! Parse a confirm target option and raise an RPC error if it is invalid.
 unsigned int ParseConfirmTarget(const UniValue& value, unsigned int max_target);
 
-RPCErrorCode RPCErrorFromTransactionError(node::TransactionError terr);
-UniValue JSONRPCPSBTError(common::PSBTError err);
-UniValue JSONRPCTransactionError(node::TransactionError terr, const std::string& err_string = "");
+RPCErrorCode RPCErrorFromTransactionError(TransactionError terr);
+UniValue JSONRPCTransactionError(TransactionError terr, const std::string& err_string = "");
 
 //! Parse a JSON range specified as int64, or [int64, int64]
 std::pair<int64_t, int64_t> ParseDescriptorRange(const UniValue& value);
 
 /** Evaluate a descriptor given as a string, or as a {"desc":...,"range":...} object, with default range of 1000. */
-std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, FlatSigningProvider& provider, const bool expand_priv = false);
+std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, FlatSigningProvider& provider);
+
+/** Returns, given services flags, a list of humanly readable (known) network services */
+UniValue GetServicesNames(ServiceFlags services);
 
 /**
  * Serializing JSON objects depends on the outer type. Only arrays and
@@ -166,18 +130,8 @@ struct RPCArgOptions {
     std::string oneline_description{};   //!< Should be empty unless it is supposed to override the auto-generated summary line
     std::vector<std::string> type_str{}; //!< Should be empty unless it is supposed to override the auto-generated type strings. Vector length is either 0 or 2, m_opts.type_str.at(0) will override the type of the value in a key-value pair, m_opts.type_str.at(1) will override the type in the argument description.
     bool hidden{false};                  //!< For testing only
-    bool also_positional{false};         //!< If set allows a named-parameter field in an OBJ_NAMED_PARAM options object
-                                         //!< to have the same name as a top-level parameter. By default the RPC
-                                         //!< framework disallows this, because if an RPC request passes the value by
-                                         //!< name, it is assigned to top-level parameter position, not to the options
-                                         //!< position, defeating the purpose of using OBJ_NAMED_PARAMS instead OBJ for
-                                         //!< that option. But sometimes it makes sense to allow less-commonly used
-                                         //!< options to be passed by name only, and more commonly used options to be
-                                         //!< passed by name or position, so the RPC framework allows this as long as
-                                         //!< methods set the also_positional flag and read values from both positions.
 };
 
-// NOLINTNEXTLINE(misc-no-recursion)
 struct RPCArg {
     enum class Type {
         OBJ,
@@ -185,13 +139,6 @@ struct RPCArg {
         STR,
         NUM,
         BOOL,
-        OBJ_NAMED_PARAMS, //!< Special type that behaves almost exactly like
-                          //!< OBJ, defining an options object with a list of
-                          //!< pre-defined keys. The only difference between OBJ
-                          //!< and OBJ_NAMED_PARAMS is that OBJ_NAMED_PARMS
-                          //!< also allows the keys to be passed as top-level
-                          //!< named parameters, as a more convenient way to pass
-                          //!< options to the RPC method without nesting them.
         OBJ_USER_KEYS, //!< Special type where the user must set the keys e.g. to define multiple addresses; as opposed to e.g. an options object where the keys are predefined
         AMOUNT,        //!< Special type representing a floating point amount (can be either NUM or STR)
         STR_HEX,       //!< Special type that is a STR with only hex chars
@@ -236,7 +183,7 @@ struct RPCArg {
           m_description{std::move(description)},
           m_opts{std::move(opts)}
     {
-        CHECK_NONFATAL(type != Type::ARR && type != Type::OBJ && type != Type::OBJ_NAMED_PARAMS && type != Type::OBJ_USER_KEYS);
+        CHECK_NONFATAL(type != Type::ARR && type != Type::OBJ && type != Type::OBJ_USER_KEYS);
     }
 
     RPCArg(
@@ -253,7 +200,7 @@ struct RPCArg {
           m_description{std::move(description)},
           m_opts{std::move(opts)}
     {
-        CHECK_NONFATAL(type == Type::ARR || type == Type::OBJ || type == Type::OBJ_NAMED_PARAMS || type == Type::OBJ_USER_KEYS);
+        CHECK_NONFATAL(type == Type::ARR || type == Type::OBJ || type == Type::OBJ_USER_KEYS);
     }
 
     bool IsOptional() const;
@@ -287,7 +234,6 @@ struct RPCArg {
     std::string ToDescriptionString(bool is_named_arg) const;
 };
 
-// NOLINTNEXTLINE(misc-no-recursion)
 struct RPCResult {
     enum class Type {
         OBJ,
@@ -418,75 +364,12 @@ public:
     RPCHelpMan(std::string name, std::string description, std::vector<RPCArg> args, RPCResults results, RPCExamples examples, RPCMethodImpl fun);
 
     UniValue HandleRequest(const JSONRPCRequest& request) const;
-    /**
-     * @brief Helper to get a required or default-valued request argument.
-     *
-     * Use this function when the argument is required or when it has a default value. If the
-     * argument is optional and may not be provided, use MaybeArg instead.
-     *
-     * This function only works during m_fun(), i.e., it should only be used in
-     * RPC method implementations. It internally checks whether the user-passed
-     * argument isNull() and parses (from JSON) and returns the user-passed argument,
-     * or the default value derived from the RPCArg documentation.
-     *
-     * The instantiation of this helper for type R must match the corresponding RPCArg::Type.
-     *
-     * @return The value of the RPC argument (or the default value) cast to type R.
-     *
-     * @see MaybeArg for handling optional arguments without default values.
-     */
-    template <typename R>
-    auto Arg(std::string_view key) const
-    {
-        auto i{GetParamIndex(key)};
-        // Return argument (required or with default value).
-        if constexpr (std::is_integral_v<R> || std::is_floating_point_v<R>) {
-            // Return numbers by value.
-            return ArgValue<R>(i);
-        } else {
-            // Return everything else by reference.
-            return ArgValue<const R&>(i);
-        }
-    }
-    /**
-     * @brief Helper to get an optional request argument.
-     *
-     * Use this function when the argument is optional and does not have a default value. If the
-     * argument is required or has a default value, use Arg instead.
-     *
-     * This function only works during m_fun(), i.e., it should only be used in
-     * RPC method implementations. It internally checks whether the user-passed
-     * argument isNull() and parses (from JSON) and returns the user-passed argument,
-     * or a falsy value if no argument was passed.
-     *
-     * The instantiation of this helper for type R must match the corresponding RPCArg::Type.
-     *
-     * @return For integral and floating-point types, a std::optional<R> is returned.
-     *         For other types, a R* pointer to the argument is returned. If the
-     *         argument is not provided, std::nullopt or a null pointer is returned.
-     *
-     * @see Arg for handling arguments that are required or have a default value.
-     */
-    template <typename R>
-    auto MaybeArg(std::string_view key) const
-    {
-        auto i{GetParamIndex(key)};
-        // Return optional argument (without default).
-        if constexpr (std::is_integral_v<R> || std::is_floating_point_v<R>) {
-            // Return numbers by value, wrapped in optional.
-            return ArgValue<std::optional<R>>(i);
-        } else {
-            // Return other types by pointer.
-            return ArgValue<const R*>(i);
-        }
-    }
     std::string ToString() const;
     /** Return the named args that need to be converted from string to another JSON type */
     UniValue GetArgMap() const;
     /** If the supplied number of args is neither too small nor too high */
     bool IsValidNumArgs(size_t num_args) const;
-    //! Return list of arguments and whether they are named-only.
-    std::vector<std::pair<std::string, bool>> GetArgNames() const;
+    std::vector<std::string> GetArgNames() const;
 
     const std::string m_name;
 
@@ -496,11 +379,6 @@ private:
     const std::vector<RPCArg> m_args;
     const RPCResults m_results;
     const RPCExamples m_examples;
-    mutable const JSONRPCRequest* m_req{nullptr}; // A pointer to the request for the duration of m_fun()
-    template <typename R>
-    R ArgValue(size_t i) const;
-    //! Return positional index of a parameter using its name as key.
-    size_t GetParamIndex(std::string_view key) const;
 };
 
 /**
@@ -512,4 +390,4 @@ private:
 void PushWarnings(const UniValue& warnings, UniValue& obj);
 void PushWarnings(const std::vector<bilingual_str>& warnings, UniValue& obj);
 
-#endif // BITCOIN_RPC_UTIL_H
+#endif // UNDAL_RPC_UTIL_H

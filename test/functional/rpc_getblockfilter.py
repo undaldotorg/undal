@@ -4,14 +4,14 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the getblockfilter RPC."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal, assert_is_hex_string, assert_raises_rpc_error,
     )
 
 FILTER_TYPES = ["basic"]
 
-class GetBlockFilterTest(BitcoinTestFramework):
+class GetBlockFilterTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -61,4 +61,4 @@ class GetBlockFilterTest(BitcoinTestFramework):
                                     self.nodes[0].getblockfilter, genesis_hash, filter_type)
 
 if __name__ == '__main__':
-    GetBlockFilterTest(__file__).main()
+    GetBlockFilterTest().main()

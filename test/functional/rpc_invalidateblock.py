@@ -4,7 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the invalidateblock RPC."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE_DESCRIPTOR
 from test_framework.util import (
     assert_equal,
@@ -12,7 +12,7 @@ from test_framework.util import (
 )
 
 
-class InvalidateTest(BitcoinTestFramework):
+class InvalidateTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 3
@@ -90,4 +90,4 @@ class InvalidateTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    InvalidateTest(__file__).main()
+    InvalidateTest().main()

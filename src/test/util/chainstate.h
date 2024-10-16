@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 //
-#ifndef BITCOIN_TEST_UTIL_CHAINSTATE_H
-#define BITCOIN_TEST_UTIL_CHAINSTATE_H
+#ifndef UNDAL_TEST_UTIL_CHAINSTATE_H
+#define UNDAL_TEST_UTIL_CHAINSTATE_H
 
 #include <clientversion.h>
 #include <logging.h>
@@ -50,13 +50,13 @@ CreateAndActivateUTXOSnapshot(
     UniValue result = CreateUTXOSnapshot(
         node, node.chainman->ActiveChainstate(), auto_outfile, snapshot_path, snapshot_path);
     LogPrintf(
-        "Wrote UTXO snapshot to %s: %s\n", fs::PathToString(snapshot_path.make_preferred()), result.write());
+        "Wrote UTXO snapshot to %s: %s", fs::PathToString(snapshot_path.make_preferred()), result.write());
 
     // Read the written snapshot in and then activate it.
     //
     FILE* infile{fsbridge::fopen(snapshot_path, "rb")};
     AutoFile auto_infile{infile};
-    node::SnapshotMetadata metadata{node.chainman->GetParams().MessageStart()};
+    node::SnapshotMetadata metadata;
     auto_infile >> metadata;
 
     malleation(auto_infile, metadata);
@@ -71,7 +71,6 @@ CreateAndActivateUTXOSnapshot(
             // This is a stripped-down version of node::LoadChainstate which
             // preserves the block index.
             LOCK(::cs_main);
-            CBlockIndex *orig_tip = node.chainman->ActiveChainstate().m_chain.Tip();
             uint256 gen_hash = node.chainman->ActiveChainstate().m_chain[0]->GetBlockHash();
             node.chainman->ResetChainstates();
             node.chainman->InitializeChainstate(node.mempool.get());
@@ -84,25 +83,6 @@ CreateAndActivateUTXOSnapshot(
             chain.setBlockIndexCandidates.insert(node.chainman->m_blockman.LookupBlockIndex(gen_hash));
             chain.LoadChainTip();
             node.chainman->MaybeRebalanceCaches();
-
-            // Reset the HAVE_DATA flags below the snapshot height, simulating
-            // never-having-downloaded them in the first place.
-            // TODO: perhaps we could improve this by using pruning to delete
-            // these blocks instead
-            CBlockIndex *pindex = orig_tip;
-            while (pindex && pindex != chain.m_chain.Tip()) {
-                // Remove all data and validity flags by just setting
-                // BLOCK_VALID_TREE. Also reset transaction counts and sequence
-                // ids that are set when blocks are received, to make test setup
-                // more realistic and satisfy consistency checks in
-                // CheckBlockIndex().
-                assert(pindex->IsValid(BlockStatus::BLOCK_VALID_TREE));
-                pindex->nStatus = BlockStatus::BLOCK_VALID_TREE;
-                pindex->nTx = 0;
-                pindex->m_chain_tx_count = 0;
-                pindex->nSequenceId = 0;
-                pindex = pindex->pprev;
-            }
         }
         BlockValidationState state;
         if (!node.chainman->ActiveChainstate().ActivateBestChain(state)) {
@@ -112,24 +92,8 @@ CreateAndActivateUTXOSnapshot(
             0 == WITH_LOCK(node.chainman->GetMutex(), return node.chainman->ActiveHeight()));
     }
 
-    auto& new_active = node.chainman->ActiveChainstate();
-    auto* tip = new_active.m_chain.Tip();
-
-    // Disconnect a block so that the snapshot chainstate will be ahead, otherwise
-    // it will refuse to activate.
-    //
-    // TODO this is a unittest-specific hack, and we should probably rethink how to
-    // better generate/activate snapshots in unittests.
-    if (tip->pprev) {
-        new_active.m_chain.SetTip(*(tip->pprev));
-    }
-
-    auto res = node.chainman->ActivateSnapshot(auto_infile, metadata, in_memory_chainstate);
-
-    // Restore the old tip.
-    new_active.m_chain.SetTip(*tip);
-    return !!res;
+    return node.chainman->ActivateSnapshot(auto_infile, metadata, in_memory_chainstate);
 }
 
 
-#endif // BITCOIN_TEST_UTIL_CHAINSTATE_H
+#endif // UNDAL_TEST_UTIL_CHAINSTATE_H

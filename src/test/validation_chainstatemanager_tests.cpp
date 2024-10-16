@@ -4,21 +4,15 @@
 //
 #include <chainparams.h>
 #include <consensus/validation.h>
-#include <kernel/disconnected_transactions.h>
-#include <node/chainstatemanager_args.h>
-#include <node/kernel_notifications.h>
 #include <node/utxo_snapshot.h>
 #include <random.h>
 #include <rpc/blockchain.h>
 #include <sync.h>
 #include <test/util/chainstate.h>
-#include <test/util/logging.h>
 #include <test/util/random.h>
 #include <test/util/setup_common.h>
-#include <test/util/validation.h>
+#include <timedata.h>
 #include <uint256.h>
-#include <util/result.h>
-#include <util/vector.h>
 #include <validation.h>
 #include <validationinterface.h>
 
@@ -28,26 +22,29 @@
 
 #include <boost/test/unit_test.hpp>
 
-using node::BlockManager;
-using node::KernelNotifications;
 using node::SnapshotMetadata;
 
-BOOST_FIXTURE_TEST_SUITE(validation_chainstatemanager_tests, TestingSetup)
+BOOST_FIXTURE_TEST_SUITE(validation_chainstatemanager_tests, ChainTestingSetup)
 
 //! Basic tests for ChainstateManager.
 //!
 //! First create a legacy (IBD) chainstate, then create a snapshot chainstate.
-BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
+BOOST_AUTO_TEST_CASE(chainstatemanager)
 {
     ChainstateManager& manager = *m_node.chainman;
+    CTxMemPool& mempool = *m_node.mempool;
+
     std::vector<Chainstate*> chainstates;
 
     BOOST_CHECK(!manager.SnapshotBlockhash().has_value());
 
     // Create a legacy (IBD) chainstate.
     //
-    Chainstate& c1 = manager.ActiveChainstate();
+    Chainstate& c1 = WITH_LOCK(::cs_main, return manager.InitializeChainstate(&mempool));
     chainstates.push_back(&c1);
+    c1.InitCoinsDB(
+        /*cache_size_bytes=*/1 << 23, /*in_memory=*/true, /*should_wipe=*/false);
+    WITH_LOCK(::cs_main, c1.InitCoinsCache(1 << 23));
 
     BOOST_CHECK(!manager.IsSnapshotActive());
     BOOST_CHECK(WITH_LOCK(::cs_main, return !manager.IsSnapshotValidated()));
@@ -57,9 +54,8 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
     auto& active_chain = WITH_LOCK(manager.GetMutex(), return manager.ActiveChain());
     BOOST_CHECK_EQUAL(&active_chain, &c1.m_chain);
 
-    // Get to a valid assumeutxo tip (per chainparams);
-    mineBlocks(10);
-    BOOST_CHECK_EQUAL(WITH_LOCK(manager.GetMutex(), return manager.ActiveHeight()), 110);
+    BOOST_CHECK_EQUAL(WITH_LOCK(manager.GetMutex(), return manager.ActiveHeight()), -1);
+
     auto active_tip = WITH_LOCK(manager.GetMutex(), return manager.ActiveTip());
     auto exp_tip = c1.m_chain.Tip();
     BOOST_CHECK_EQUAL(active_tip, exp_tip);
@@ -68,22 +64,21 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
 
     // Create a snapshot-based chainstate.
     //
-    const uint256 snapshot_blockhash = active_tip->GetBlockHash();
-    Chainstate& c2 = WITH_LOCK(::cs_main, return manager.ActivateExistingSnapshot(snapshot_blockhash));
+    const uint256 snapshot_blockhash = GetRandHash();
+    Chainstate& c2 = WITH_LOCK(::cs_main, return manager.ActivateExistingSnapshot(
+        &mempool, snapshot_blockhash));
     chainstates.push_back(&c2);
+
+    BOOST_CHECK_EQUAL(manager.SnapshotBlockhash().value(), snapshot_blockhash);
+
     c2.InitCoinsDB(
         /*cache_size_bytes=*/1 << 23, /*in_memory=*/true, /*should_wipe=*/false);
-    {
-        LOCK(::cs_main);
-        c2.InitCoinsCache(1 << 23);
-        c2.CoinsTip().SetBestBlock(active_tip->GetBlockHash());
-        c2.setBlockIndexCandidates.insert(manager.m_blockman.LookupBlockIndex(active_tip->GetBlockHash()));
-        c2.LoadChainTip();
-    }
+    WITH_LOCK(::cs_main, c2.InitCoinsCache(1 << 23));
+    // Unlike c1, which doesn't have any blocks. Gets us different tip, height.
+    c2.LoadGenesisBlock();
     BlockValidationState _;
     BOOST_CHECK(c2.ActivateBestChain(_, nullptr));
 
-    BOOST_CHECK_EQUAL(manager.SnapshotBlockhash().value(), snapshot_blockhash);
     BOOST_CHECK(manager.IsSnapshotActive());
     BOOST_CHECK(WITH_LOCK(::cs_main, return !manager.IsSnapshotValidated()));
     BOOST_CHECK_EQUAL(&c2, &manager.ActiveChainstate());
@@ -94,24 +89,25 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager, TestChain100Setup)
     auto& active_chain2 = WITH_LOCK(manager.GetMutex(), return manager.ActiveChain());
     BOOST_CHECK_EQUAL(&active_chain2, &c2.m_chain);
 
-    BOOST_CHECK_EQUAL(WITH_LOCK(manager.GetMutex(), return manager.ActiveHeight()), 110);
-    mineBlocks(1);
-    BOOST_CHECK_EQUAL(WITH_LOCK(manager.GetMutex(), return manager.ActiveHeight()), 111);
-    BOOST_CHECK_EQUAL(WITH_LOCK(manager.GetMutex(), return c1.m_chain.Height()), 110);
+    BOOST_CHECK_EQUAL(WITH_LOCK(manager.GetMutex(), return manager.ActiveHeight()), 0);
 
     auto active_tip2 = WITH_LOCK(manager.GetMutex(), return manager.ActiveTip());
-    BOOST_CHECK_EQUAL(active_tip, active_tip2->pprev);
-    BOOST_CHECK_EQUAL(active_tip, c1.m_chain.Tip());
-    BOOST_CHECK_EQUAL(active_tip2, c2.m_chain.Tip());
+    auto exp_tip2 = c2.m_chain.Tip();
+    BOOST_CHECK_EQUAL(active_tip2, exp_tip2);
+
+    // Ensure that these pointers actually correspond to different
+    // CCoinsViewCache instances.
+    BOOST_CHECK(exp_tip != exp_tip2);
 
     // Let scheduler events finish running to avoid accessing memory that is going to be unloaded
-    m_node.validation_signals->SyncWithValidationInterfaceQueue();
+    SyncWithValidationInterfaceQueue();
 }
 
 //! Test rebalancing the caches associated with each chainstate.
-BOOST_FIXTURE_TEST_CASE(chainstatemanager_rebalance_caches, TestChain100Setup)
+BOOST_AUTO_TEST_CASE(chainstatemanager_rebalance_caches)
 {
     ChainstateManager& manager = *m_node.chainman;
+    CTxMemPool& mempool = *m_node.mempool;
 
     size_t max_cache = 10000;
     manager.m_total_coinsdb_cache = max_cache;
@@ -121,11 +117,16 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_rebalance_caches, TestChain100Setup)
 
     // Create a legacy (IBD) chainstate.
     //
-    Chainstate& c1 = manager.ActiveChainstate();
+    Chainstate& c1 = WITH_LOCK(::cs_main, return manager.InitializeChainstate(&mempool));
     chainstates.push_back(&c1);
+    c1.InitCoinsDB(
+        /*cache_size_bytes=*/1 << 23, /*in_memory=*/true, /*should_wipe=*/false);
+
     {
         LOCK(::cs_main);
         c1.InitCoinsCache(1 << 23);
+        BOOST_REQUIRE(c1.LoadGenesisBlock());
+        c1.CoinsTip().SetBestBlock(InsecureRand256());
         manager.MaybeRebalanceCaches();
     }
 
@@ -134,31 +135,25 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_rebalance_caches, TestChain100Setup)
 
     // Create a snapshot-based chainstate.
     //
-    CBlockIndex* snapshot_base{WITH_LOCK(manager.GetMutex(), return manager.ActiveChain()[manager.ActiveChain().Height() / 2])};
-    Chainstate& c2 = WITH_LOCK(cs_main, return manager.ActivateExistingSnapshot(*snapshot_base->phashBlock));
+    Chainstate& c2 = WITH_LOCK(cs_main, return manager.ActivateExistingSnapshot(&mempool, GetRandHash()));
     chainstates.push_back(&c2);
     c2.InitCoinsDB(
         /*cache_size_bytes=*/1 << 23, /*in_memory=*/true, /*should_wipe=*/false);
 
-    // Reset IBD state so IsInitialBlockDownload() returns true and causes
-    // MaybeRebalancesCaches() to prioritize the snapshot chainstate, giving it
-    // more cache space than the snapshot chainstate. Calling ResetIbd() is
-    // necessary because m_cached_finished_ibd is already latched to true before
-    // the test starts due to the test setup. After ResetIbd() is called.
-    // IsInitialBlockDownload will return true because at this point the active
-    // chainstate has a null chain tip.
-    static_cast<TestChainstateManager&>(manager).ResetIbd();
-
     {
         LOCK(::cs_main);
         c2.InitCoinsCache(1 << 23);
+        BOOST_REQUIRE(c2.LoadGenesisBlock());
+        c2.CoinsTip().SetBestBlock(InsecureRand256());
         manager.MaybeRebalanceCaches();
     }
 
-    BOOST_CHECK_CLOSE(double(c1.m_coinstip_cache_size_bytes), max_cache * 0.05, 1);
-    BOOST_CHECK_CLOSE(double(c1.m_coinsdb_cache_size_bytes), max_cache * 0.05, 1);
-    BOOST_CHECK_CLOSE(double(c2.m_coinstip_cache_size_bytes), max_cache * 0.95, 1);
-    BOOST_CHECK_CLOSE(double(c2.m_coinsdb_cache_size_bytes), max_cache * 0.95, 1);
+    // Since both chainstates are considered to be in initial block download,
+    // the snapshot chainstate should take priority.
+    BOOST_CHECK_CLOSE(c1.m_coinstip_cache_size_bytes, max_cache * 0.05, 1);
+    BOOST_CHECK_CLOSE(c1.m_coinsdb_cache_size_bytes, max_cache * 0.05, 1);
+    BOOST_CHECK_CLOSE(c2.m_coinstip_cache_size_bytes, max_cache * 0.95, 1);
+    BOOST_CHECK_CLOSE(c2.m_coinsdb_cache_size_bytes, max_cache * 0.95, 1);
 }
 
 struct SnapshotTestSetup : TestChain100Setup {
@@ -170,10 +165,9 @@ struct SnapshotTestSetup : TestChain100Setup {
     // destructive filesystem operations.
     SnapshotTestSetup() : TestChain100Setup{
                               {},
-                              {
-                                  .coins_db_in_memory = false,
-                                  .block_tree_db_in_memory = false,
-                              },
+                              {},
+                              /*coins_db_in_memory=*/false,
+                              /*block_tree_db_in_memory=*/false,
                           }
     {
     }
@@ -187,7 +181,7 @@ struct SnapshotTestSetup : TestChain100Setup {
         {
             LOCK(::cs_main);
             BOOST_CHECK(!chainman.IsSnapshotValidated());
-            BOOST_CHECK(!node::FindSnapshotChainstateDir(chainman.m_options.datadir));
+            BOOST_CHECK(!node::FindSnapshotChainstateDir());
         }
 
         size_t initial_size;
@@ -230,17 +224,14 @@ struct SnapshotTestSetup : TestChain100Setup {
                 // A UTXO is missing but count is correct
                 metadata.m_coins_count -= 1;
 
-                Txid txid;
-                auto_infile >> txid;
-                // coins size
-                (void)ReadCompactSize(auto_infile);
-                // vout index
-                (void)ReadCompactSize(auto_infile);
+                COutPoint outpoint;
                 Coin coin;
+
+                auto_infile >> outpoint;
                 auto_infile >> coin;
         }));
 
-        BOOST_CHECK(!node::FindSnapshotChainstateDir(chainman.m_options.datadir));
+        BOOST_CHECK(!node::FindSnapshotChainstateDir());
 
         BOOST_REQUIRE(!CreateAndActivateUTXOSnapshot(
             this, [](AutoFile& auto_infile, SnapshotMetadata& metadata) {
@@ -264,7 +255,7 @@ struct SnapshotTestSetup : TestChain100Setup {
         }));
 
         BOOST_REQUIRE(CreateAndActivateUTXOSnapshot(this));
-        BOOST_CHECK(fs::exists(*node::FindSnapshotChainstateDir(chainman.m_options.datadir)));
+        BOOST_CHECK(fs::exists(*node::FindSnapshotChainstateDir()));
 
         // Ensure our active chain is the snapshot chainstate.
         BOOST_CHECK(!chainman.ActiveChainstate().m_from_snapshot_blockhash->IsNull());
@@ -277,18 +268,21 @@ struct SnapshotTestSetup : TestChain100Setup {
         {
             LOCK(::cs_main);
 
-            fs::path found = *node::FindSnapshotChainstateDir(chainman.m_options.datadir);
+            fs::path found = *node::FindSnapshotChainstateDir();
 
             // Note: WriteSnapshotBaseBlockhash() is implicitly tested above.
             BOOST_CHECK_EQUAL(
                 *node::ReadSnapshotBaseBlockhash(found),
                 *chainman.SnapshotBlockhash());
+
+            // Ensure that the genesis block was not marked assumed-valid.
+            BOOST_CHECK(!chainman.ActiveChain().Genesis()->IsAssumedValid());
         }
 
-        const auto& au_data = ::Params().AssumeutxoForHeight(snapshot_height);
+        const AssumeutxoData& au_data = *ExpectedAssumeutxo(snapshot_height, ::Params());
         const CBlockIndex* tip = WITH_LOCK(chainman.GetMutex(), return chainman.ActiveTip());
 
-        BOOST_CHECK_EQUAL(tip->m_chain_tx_count, au_data->m_chain_tx_count);
+        BOOST_CHECK_EQUAL(tip->nChainTx, au_data.nChainTx);
 
         // To be checked against later when we try loading a subsequent snapshot.
         uint256 loaded_snapshot_blockhash{*chainman.SnapshotBlockhash()};
@@ -378,26 +372,19 @@ struct SnapshotTestSetup : TestChain100Setup {
                 cs->ForceFlushStateToDisk();
             }
             // Process all callbacks referring to the old manager before wiping it.
-            m_node.validation_signals->SyncWithValidationInterfaceQueue();
+            SyncWithValidationInterfaceQueue();
             LOCK(::cs_main);
             chainman.ResetChainstates();
             BOOST_CHECK_EQUAL(chainman.GetAll().size(), 0);
-            m_node.notifications = std::make_unique<KernelNotifications>(Assert(m_node.shutdown_request), m_node.exit_status, *Assert(m_node.warnings));
             const ChainstateManager::Options chainman_opts{
                 .chainparams = ::Params(),
-                .datadir = chainman.m_options.datadir,
-                .notifications = *m_node.notifications,
-                .signals = m_node.validation_signals.get(),
-            };
-            const BlockManager::Options blockman_opts{
-                .chainparams = chainman_opts.chainparams,
-                .blocks_dir = m_args.GetBlocksDirPath(),
-                .notifications = chainman_opts.notifications,
+                .datadir = m_args.GetDataDirNet(),
+                .adjusted_time_callback = GetAdjustedTime,
             };
             // For robustness, ensure the old manager is destroyed before creating a
             // new one.
             m_node.chainman.reset();
-            m_node.chainman = std::make_unique<ChainstateManager>(*Assert(m_node.shutdown_signal), chainman_opts, blockman_opts);
+            m_node.chainman = std::make_unique<ChainstateManager>(chainman_opts, node::BlockManager::Options{});
         }
         return *Assert(m_node.chainman);
     }
@@ -414,142 +401,77 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_activate_snapshot, SnapshotTestSetup)
 //! - First, verify that setBlockIndexCandidates is as expected when using a single,
 //!   fully-validating chainstate.
 //!
-//! - Then mark a region of the chain as missing data and introduce a second chainstate
+//! - Then mark a region of the chain BLOCK_ASSUMED_VALID and introduce a second chainstate
 //!   that will tolerate assumed-valid blocks. Run LoadBlockIndex() and ensure that the first
 //!   chainstate only contains fully validated blocks and the other chainstate contains all blocks,
-//!   except those marked assume-valid, because those entries don't HAVE_DATA.
+//!   even those assumed-valid.
 //!
 BOOST_FIXTURE_TEST_CASE(chainstatemanager_loadblockindex, TestChain100Setup)
 {
     ChainstateManager& chainman = *Assert(m_node.chainman);
+    CTxMemPool& mempool = *m_node.mempool;
     Chainstate& cs1 = chainman.ActiveChainstate();
 
     int num_indexes{0};
-    // Blocks in range [assumed_valid_start_idx, last_assumed_valid_idx) will be
-    // marked as assumed-valid and not having data.
+    int num_assumed_valid{0};
     const int expected_assumed_valid{20};
-    const int last_assumed_valid_idx{111};
+    const int last_assumed_valid_idx{40};
     const int assumed_valid_start_idx = last_assumed_valid_idx - expected_assumed_valid;
 
-    // Mine to height 120, past the hardcoded regtest assumeutxo snapshot at
-    // height 110
-    mineBlocks(20);
-
     CBlockIndex* validated_tip{nullptr};
-    CBlockIndex* assumed_base{nullptr};
     CBlockIndex* assumed_tip{WITH_LOCK(chainman.GetMutex(), return chainman.ActiveChain().Tip())};
-    BOOST_CHECK_EQUAL(assumed_tip->nHeight, 120);
 
     auto reload_all_block_indexes = [&]() {
-        // For completeness, we also reset the block sequence counters to
-        // ensure that no state which affects the ranking of tip-candidates is
-        // retained (even though this isn't strictly necessary).
-        WITH_LOCK(::cs_main, return chainman.ResetBlockSequenceCounters());
         for (Chainstate* cs : chainman.GetAll()) {
             LOCK(::cs_main);
-            cs->ClearBlockIndexCandidates();
+            cs->UnloadBlockIndex();
             BOOST_CHECK(cs->setBlockIndexCandidates.empty());
         }
 
         WITH_LOCK(::cs_main, chainman.LoadBlockIndex());
     };
 
-    // Ensure that without any assumed-valid BlockIndex entries, only the current tip is
-    // considered as a candidate.
+    // Ensure that without any assumed-valid BlockIndex entries, all entries are considered
+    // tip candidates.
     reload_all_block_indexes();
-    BOOST_CHECK_EQUAL(cs1.setBlockIndexCandidates.size(), 1);
+    BOOST_CHECK_EQUAL(cs1.setBlockIndexCandidates.size(), cs1.m_chain.Height() + 1);
 
-    // Reset some region of the chain's nStatus, removing the HAVE_DATA flag.
+    // Mark some region of the chain assumed-valid.
     for (int i = 0; i <= cs1.m_chain.Height(); ++i) {
         LOCK(::cs_main);
         auto index = cs1.m_chain[i];
 
-        // Blocks with heights in range [91, 110] are marked as missing data.
         if (i < last_assumed_valid_idx && i >= assumed_valid_start_idx) {
-            index->nStatus = BlockStatus::BLOCK_VALID_TREE;
-            index->nTx = 0;
-            index->m_chain_tx_count = 0;
+            index->nStatus = BlockStatus::BLOCK_VALID_TREE | BlockStatus::BLOCK_ASSUMED_VALID;
         }
 
         ++num_indexes;
+        if (index->IsAssumedValid()) ++num_assumed_valid;
 
         // Note the last fully-validated block as the expected validated tip.
         if (i == (assumed_valid_start_idx - 1)) {
             validated_tip = index;
-        }
-        // Note the last assumed valid block as the snapshot base
-        if (i == last_assumed_valid_idx - 1) {
-            assumed_base = index;
+            BOOST_CHECK(!index->IsAssumedValid());
         }
     }
 
-    // Note: cs2's tip is not set when ActivateExistingSnapshot is called.
+    BOOST_CHECK_EQUAL(expected_assumed_valid, num_assumed_valid);
+
     Chainstate& cs2 = WITH_LOCK(::cs_main,
-        return chainman.ActivateExistingSnapshot(*assumed_base->phashBlock));
+        return chainman.ActivateExistingSnapshot(&mempool, GetRandHash()));
 
-    // Set tip of the fully validated chain to be the validated tip
-    cs1.m_chain.SetTip(*validated_tip);
-
-    // Set tip of the assume-valid-based chain to the assume-valid block
-    cs2.m_chain.SetTip(*assumed_base);
-
-    // Sanity check test variables.
-    BOOST_CHECK_EQUAL(num_indexes, 121); // 121 total blocks, including genesis
-    BOOST_CHECK_EQUAL(assumed_tip->nHeight, 120);  // original chain has height 120
-    BOOST_CHECK_EQUAL(validated_tip->nHeight, 90); // current cs1 chain has height 90
-    BOOST_CHECK_EQUAL(assumed_base->nHeight, 110); // current cs2 chain has height 110
-
-    // Regenerate cs1.setBlockIndexCandidates and cs2.setBlockIndexCandidate and
-    // check contents below.
     reload_all_block_indexes();
 
-    // The fully validated chain should only have the current validated tip and
-    // the assumed valid base as candidates, blocks 90 and 110. Specifically:
-    //
-    // - It does not have blocks 0-89 because they contain less work than the
-    //   chain tip.
-    //
-    // - It has block 90 because it has data and equal work to the chain tip,
-    //   (since it is the chain tip).
-    //
-    // - It does not have blocks 91-109 because they do not contain data.
-    //
-    // - It has block 110 even though it does not have data, because
-    //   LoadBlockIndex has a special case to always add the snapshot block as a
-    //   candidate. The special case is only actually intended to apply to the
-    //   snapshot chainstate cs2, not the background chainstate cs1, but it is
-    //   written broadly and applies to both.
-    //
-    // - It does not have any blocks after height 110 because cs1 is a background
-    //   chainstate, and only blocks where are ancestors of the snapshot block
-    //   are added as candidates for the background chainstate.
-    BOOST_CHECK_EQUAL(cs1.setBlockIndexCandidates.size(), 2);
+    // The fully validated chain only has candidates up to the start of the assumed-valid
+    // blocks.
     BOOST_CHECK_EQUAL(cs1.setBlockIndexCandidates.count(validated_tip), 1);
-    BOOST_CHECK_EQUAL(cs1.setBlockIndexCandidates.count(assumed_base), 1);
+    BOOST_CHECK_EQUAL(cs1.setBlockIndexCandidates.count(assumed_tip), 0);
+    BOOST_CHECK_EQUAL(cs1.setBlockIndexCandidates.size(), assumed_valid_start_idx);
 
-    // The assumed-valid tolerant chain has the assumed valid base as a
-    // candidate, but otherwise has none of the assumed-valid (which do not
-    // HAVE_DATA) blocks as candidates.
-    //
-    // Specifically:
-    // - All blocks below height 110 are not candidates, because cs2 chain tip
-    //   has height 110 and they have less work than it does.
-    //
-    // - Block 110 is a candidate even though it does not have data, because it
-    //   is the snapshot block, which is assumed valid.
-    //
-    // - Blocks 111-120 are added because they have data.
-
-    // Check that block 90 is absent
-    BOOST_CHECK_EQUAL(cs2.setBlockIndexCandidates.count(validated_tip), 0);
-    // Check that block 109 is absent
-    BOOST_CHECK_EQUAL(cs2.setBlockIndexCandidates.count(assumed_base->pprev), 0);
-    // Check that block 110 is present
-    BOOST_CHECK_EQUAL(cs2.setBlockIndexCandidates.count(assumed_base), 1);
-    // Check that block 120 is present
+    // The assumed-valid tolerant chain has all blocks as candidates.
+    BOOST_CHECK_EQUAL(cs2.setBlockIndexCandidates.count(validated_tip), 1);
     BOOST_CHECK_EQUAL(cs2.setBlockIndexCandidates.count(assumed_tip), 1);
-    // Check that 11 blocks total are present.
-    BOOST_CHECK_EQUAL(cs2.setBlockIndexCandidates.size(), num_indexes - last_assumed_valid_idx + 1);
+    BOOST_CHECK_EQUAL(cs2.setBlockIndexCandidates.size(), num_indexes);
 }
 
 //! Ensure that snapshot chainstates initialize properly when found on disk.
@@ -560,7 +482,7 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_init, SnapshotTestSetup)
 
     this->SetupSnapshot();
 
-    fs::path snapshot_chainstate_dir = *node::FindSnapshotChainstateDir(chainman.m_options.datadir);
+    fs::path snapshot_chainstate_dir = *node::FindSnapshotChainstateDir();
     BOOST_CHECK(fs::exists(snapshot_chainstate_dir));
     BOOST_CHECK_EQUAL(snapshot_chainstate_dir, gArgs.GetDataDirNet() / "chainstate_snapshot");
 
@@ -576,7 +498,7 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_init, SnapshotTestSetup)
     // it will initialize instead of attempting to complete validation.
     //
     // Note that this is not a realistic use of DisconnectTip().
-    DisconnectedBlockTransactions unused_pool{MAX_DISCONNECTED_TX_POOL_BYTES};
+    DisconnectedBlockTransactions unused_pool;
     BlockValidationState unused_state;
     {
         LOCK2(::cs_main, bg_chainstate.MempoolMutex());
@@ -632,9 +554,9 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_completion, SnapshotTestSetup
     auto db_cache_before_complete = active_cs.m_coinsdb_cache_size_bytes;
 
     SnapshotCompletionResult res;
-    m_node.notifications->m_shutdown_on_fatal_error = false;
+    auto mock_shutdown = [](bilingual_str msg) {};
 
-    fs::path snapshot_chainstate_dir = *node::FindSnapshotChainstateDir(chainman.m_options.datadir);
+    fs::path snapshot_chainstate_dir = *node::FindSnapshotChainstateDir();
     BOOST_CHECK(fs::exists(snapshot_chainstate_dir));
     BOOST_CHECK_EQUAL(snapshot_chainstate_dir, gArgs.GetDataDirNet() / "chainstate_snapshot");
 
@@ -642,7 +564,8 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_completion, SnapshotTestSetup
     const uint256 snapshot_tip_hash = WITH_LOCK(chainman.GetMutex(),
         return chainman.ActiveTip()->GetBlockHash());
 
-    res = WITH_LOCK(::cs_main, return chainman.MaybeCompleteSnapshotValidation());
+    res = WITH_LOCK(::cs_main,
+        return chainman.MaybeCompleteSnapshotValidation(mock_shutdown));
     BOOST_CHECK_EQUAL(res, SnapshotCompletionResult::SUCCESS);
 
     WITH_LOCK(::cs_main, BOOST_CHECK(chainman.IsSnapshotValidated()));
@@ -658,7 +581,8 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_completion, SnapshotTestSetup
     BOOST_CHECK_EQUAL(all_chainstates[0], &active_cs);
 
     // Trying completion again should return false.
-    res = WITH_LOCK(::cs_main, return chainman.MaybeCompleteSnapshotValidation());
+    res = WITH_LOCK(::cs_main,
+        return chainman.MaybeCompleteSnapshotValidation(mock_shutdown));
     BOOST_CHECK_EQUAL(res, SnapshotCompletionResult::SKIPPED);
 
     // The invalid snapshot path should not have been used.
@@ -711,27 +635,25 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_completion_hash_mismatch, Sna
     Chainstate& validation_chainstate = *std::get<0>(chainstates);
     ChainstateManager& chainman = *Assert(m_node.chainman);
     SnapshotCompletionResult res;
-    m_node.notifications->m_shutdown_on_fatal_error = false;
+    auto mock_shutdown = [](bilingual_str msg) {};
 
     // Test tampering with the IBD UTXO set with an extra coin to ensure it causes
     // snapshot completion to fail.
     CCoinsViewCache& ibd_coins = WITH_LOCK(::cs_main,
         return validation_chainstate.CoinsTip());
     Coin badcoin;
-    badcoin.out.nValue = m_rng.rand32();
+    badcoin.out.nValue = InsecureRand32();
     badcoin.nHeight = 1;
-    badcoin.out.scriptPubKey.assign(m_rng.randbits(6), 0);
-    Txid txid = Txid::FromUint256(m_rng.rand256());
+    badcoin.out.scriptPubKey.assign(InsecureRandBits(6), 0);
+    uint256 txid = InsecureRand256();
     ibd_coins.AddCoin(COutPoint(txid, 0), std::move(badcoin), false);
 
     fs::path snapshot_chainstate_dir = gArgs.GetDataDirNet() / "chainstate_snapshot";
     BOOST_CHECK(fs::exists(snapshot_chainstate_dir));
 
-    {
-        ASSERT_DEBUG_LOG("failed to validate the -assumeutxo snapshot state");
-        res = WITH_LOCK(::cs_main, return chainman.MaybeCompleteSnapshotValidation());
-        BOOST_CHECK_EQUAL(res, SnapshotCompletionResult::HASH_MISMATCH);
-    }
+    res = WITH_LOCK(::cs_main,
+        return chainman.MaybeCompleteSnapshotValidation(mock_shutdown));
+    BOOST_CHECK_EQUAL(res, SnapshotCompletionResult::HASH_MISMATCH);
 
     auto all_chainstates = chainman.GetAll();
     BOOST_CHECK_EQUAL(all_chainstates.size(), 1);
@@ -770,65 +692,6 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_completion_hash_mismatch, Sna
         LOCK(::cs_main);
         BOOST_CHECK_EQUAL(chainman_restarted.ActiveHeight(), 220);
     }
-}
-
-/** Helper function to parse args into args_man and return the result of applying them to opts */
-template <typename Options>
-util::Result<Options> SetOptsFromArgs(ArgsManager& args_man, Options opts,
-                                      const std::vector<const char*>& args)
-{
-    const auto argv{Cat({"ignore"}, args)};
-    std::string error{};
-    if (!args_man.ParseParameters(argv.size(), argv.data(), error)) {
-        return util::Error{Untranslated("ParseParameters failed with error: " + error)};
-    }
-    const auto result{node::ApplyArgsManOptions(args_man, opts)};
-    if (!result) return util::Error{util::ErrorString(result)};
-    return opts;
-}
-
-BOOST_FIXTURE_TEST_CASE(chainstatemanager_args, BasicTestingSetup)
-{
-    //! Try to apply the provided args to a ChainstateManager::Options
-    auto get_opts = [&](const std::vector<const char*>& args) {
-        static kernel::Notifications notifications{};
-        static const ChainstateManager::Options options{
-            .chainparams = ::Params(),
-            .datadir = {},
-            .notifications = notifications};
-        return SetOptsFromArgs(*this->m_node.args, options, args);
-    };
-    //! Like get_opts, but requires the provided args to be valid and unwraps the result
-    auto get_valid_opts = [&](const std::vector<const char*>& args) {
-        const auto result{get_opts(args)};
-        BOOST_REQUIRE_MESSAGE(result, util::ErrorString(result).original);
-        return *result;
-    };
-
-    // test -assumevalid
-    BOOST_CHECK(!get_valid_opts({}).assumed_valid_block);
-    BOOST_CHECK_EQUAL(get_valid_opts({"-assumevalid="}).assumed_valid_block, uint256::ZERO);
-    BOOST_CHECK_EQUAL(get_valid_opts({"-assumevalid=0"}).assumed_valid_block, uint256::ZERO);
-    BOOST_CHECK_EQUAL(get_valid_opts({"-noassumevalid"}).assumed_valid_block, uint256::ZERO);
-    BOOST_CHECK_EQUAL(get_valid_opts({"-assumevalid=0x12"}).assumed_valid_block, uint256{0x12});
-
-    std::string assume_valid{"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"};
-    BOOST_CHECK_EQUAL(get_valid_opts({("-assumevalid=" + assume_valid).c_str()}).assumed_valid_block, uint256::FromHex(assume_valid));
-
-    BOOST_CHECK(!get_opts({"-assumevalid=xyz"}));                                                               // invalid hex characters
-    BOOST_CHECK(!get_opts({"-assumevalid=01234567890123456789012345678901234567890123456789012345678901234"})); // > 64 hex chars
-
-    // test -minimumchainwork
-    BOOST_CHECK(!get_valid_opts({}).minimum_chain_work);
-    BOOST_CHECK_EQUAL(get_valid_opts({"-minimumchainwork=0"}).minimum_chain_work, arith_uint256());
-    BOOST_CHECK_EQUAL(get_valid_opts({"-nominimumchainwork"}).minimum_chain_work, arith_uint256());
-    BOOST_CHECK_EQUAL(get_valid_opts({"-minimumchainwork=0x1234"}).minimum_chain_work, arith_uint256{0x1234});
-
-    std::string minimum_chainwork{"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"};
-    BOOST_CHECK_EQUAL(get_valid_opts({("-minimumchainwork=" + minimum_chainwork).c_str()}).minimum_chain_work, UintToArith256(uint256::FromHex(minimum_chainwork).value()));
-
-    BOOST_CHECK(!get_opts({"-minimumchainwork=xyz"}));                                                               // invalid hex characters
-    BOOST_CHECK(!get_opts({"-minimumchainwork=01234567890123456789012345678901234567890123456789012345678901234"})); // > 64 hex chars
 }
 
 BOOST_AUTO_TEST_SUITE_END()

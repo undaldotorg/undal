@@ -7,19 +7,20 @@ from decimal import Decimal
 
 from test_framework.address import key_to_p2wpkh
 from test_framework.blocktools import COINBASE_MATURITY
+from test_framework.key import ECKey
 from test_framework.messages import (
     CMerkleBlock,
     from_hex,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
 )
-from test_framework.wallet_util import generate_keypair
+from test_framework.wallet_util import bytes_to_wif
 
 
-class ImportPrunedFundsTest(BitcoinTestFramework):
+class ImportPrunedFundsTest(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -39,8 +40,10 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
         # pubkey
         address2 = self.nodes[0].getnewaddress()
         # privkey
-        address3_privkey, address3_pubkey = generate_keypair(wif=True)
-        address3 = key_to_p2wpkh(address3_pubkey)
+        eckey = ECKey()
+        eckey.generate()
+        address3_privkey = bytes_to_wif(eckey.get_bytes())
+        address3 = key_to_p2wpkh(eckey.get_pubkey().get_bytes())
         self.nodes[0].importprivkey(address3_privkey)
 
         # Check only one address
@@ -120,7 +123,7 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
         assert_equal(address_info['ismine'], True)
 
         # Remove transactions
-        assert_raises_rpc_error(-4, f'Transaction {txnid1} does not belong to this wallet', w1.removeprunedfunds, txnid1)
+        assert_raises_rpc_error(-8, "Transaction does not exist in wallet.", w1.removeprunedfunds, txnid1)
         assert not [tx for tx in w1.listtransactions(include_watchonly=True) if tx['txid'] == txnid1]
 
         wwatch.removeprunedfunds(txnid2)
@@ -143,4 +146,4 @@ class ImportPrunedFundsTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    ImportPrunedFundsTest(__file__).main()
+    ImportPrunedFundsTest().main()

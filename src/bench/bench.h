@@ -2,20 +2,19 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_BENCH_BENCH_H
-#define BITCOIN_BENCH_BENCH_H
+#ifndef UNDAL_BENCH_BENCH_H
+#define UNDAL_BENCH_BENCH_H
 
-#include <bench/nanobench.h> // IWYU pragma: export
 #include <util/fs.h>
 #include <util/macros.h>
 
 #include <chrono>
-#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
-#include <utility>
 #include <vector>
+
+#include <bench/nanobench.h>
 
 /*
  * Usage:
@@ -80,4 +79,4 @@ public:
 #define BENCHMARK(n, priority_level) \
     benchmark::BenchRunner PASTE2(bench_, PASTE2(__LINE__, n))(STRINGIZE(n), n, priority_level);
 
-#endif // BITCOIN_BENCH_BENCH_H
+#endif // UNDAL_BENCH_BENCH_H

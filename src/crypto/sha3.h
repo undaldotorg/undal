@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_CRYPTO_SHA3_H
-#define BITCOIN_CRYPTO_SHA3_H
+#ifndef UNDAL_CRYPTO_SHA3_H
+#define UNDAL_CRYPTO_SHA3_H
 
 #include <span.h>
 
@@ -32,10 +32,10 @@ private:
 public:
     static constexpr size_t OUTPUT_SIZE = 32;
 
-    SHA3_256() = default;
+    SHA3_256() {}
     SHA3_256& Write(Span<const unsigned char> data);
     SHA3_256& Finalize(Span<unsigned char> output);
     SHA3_256& Reset();
 };
 
-#endif // BITCOIN_CRYPTO_SHA3_H
+#endif // UNDAL_CRYPTO_SHA3_H

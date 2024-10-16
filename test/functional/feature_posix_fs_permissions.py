@@ -8,10 +8,10 @@
 import os
 import stat
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 
 
-class PosixFsPermissionsTest(BitcoinTestFramework):
+class PosixFsPermissionsTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -31,13 +31,13 @@ class PosixFsPermissionsTest(BitcoinTestFramework):
 
     def run_test(self):
         self.stop_node(0)
-        datadir = self.nodes[0].chain_path
+        datadir = os.path.join(self.nodes[0].datadir, self.chain)
         self.check_directory_permissions(datadir)
-        walletsdir = self.nodes[0].wallets_path
+        walletsdir = os.path.join(datadir, "wallets")
         self.check_directory_permissions(walletsdir)
-        debuglog = self.nodes[0].debug_log_path
+        debuglog = os.path.join(datadir, "debug.log")
         self.check_file_permissions(debuglog)
 
 
 if __name__ == '__main__':
-    PosixFsPermissionsTest(__file__).main()
+    PosixFsPermissionsTest().main()

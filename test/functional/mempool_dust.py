@@ -5,6 +5,7 @@
 """Test dust limit mempool policy (`-dustrelayfee` parameter)"""
 from decimal import Decimal
 
+from test_framework.key import ECKey
 from test_framework.messages import (
     COIN,
     CTxOut,
@@ -24,23 +25,21 @@ from test_framework.script_util import (
     script_to_p2sh_script,
     script_to_p2wsh_script,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.test_node import TestNode
 from test_framework.util import (
     assert_equal,
     get_fee,
 )
 from test_framework.wallet import MiniWallet
-from test_framework.wallet_util import generate_keypair
 
 
 DUST_RELAY_TX_FEE = 3000  # default setting [sat/kvB]
 
 
-class DustRelayFeeTest(BitcoinTestFramework):
+class DustRelayFeeTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
-        self.extra_args = [['-permitbaremultisig']]
 
     def test_dust_output(self, node: TestNode, dust_relay_fee: Decimal,
                          output_script: CScript, type_desc: str) -> None:
@@ -75,8 +74,11 @@ class DustRelayFeeTest(BitcoinTestFramework):
         self.wallet = MiniWallet(self.nodes[0])
 
         # prepare output scripts of each standard type
-        _, uncompressed_pubkey = generate_keypair(compressed=False)
-        _, pubkey = generate_keypair(compressed=True)
+        key = ECKey()
+        key.generate(compressed=False)
+        uncompressed_pubkey = key.get_pubkey().get_bytes()
+        key.generate(compressed=True)
+        pubkey = key.get_pubkey().get_bytes()
 
         output_scripts = (
             (key_to_p2pk_script(uncompressed_pubkey),          "P2PK (uncompressed)"),
@@ -96,18 +98,18 @@ class DustRelayFeeTest(BitcoinTestFramework):
 
         # test default (no parameter), disabled (=0) and a bunch of arbitrary dust fee rates [sat/kvB]
         for dustfee_sat_kvb in (DUST_RELAY_TX_FEE, 0, 1, 66, 500, 1337, 12345, 21212, 333333):
-            dustfee_btc_kvb = dustfee_sat_kvb / Decimal(COIN)
+            dustfee_ubtc_kvb = dustfee_sat_kvb / Decimal(COIN)
             if dustfee_sat_kvb == DUST_RELAY_TX_FEE:
                 self.log.info(f"Test default dust limit setting ({dustfee_sat_kvb} sat/kvB)...")
             else:
-                dust_parameter = f"-dustrelayfee={dustfee_btc_kvb:.8f}"
+                dust_parameter = f"-dustrelayfee={dustfee_ubtc_kvb:.8f}"
                 self.log.info(f"Test dust limit setting {dust_parameter} ({dustfee_sat_kvb} sat/kvB)...")
-                self.restart_node(0, extra_args=[dust_parameter, "-permitbaremultisig"])
+                self.restart_node(0, extra_args=[dust_parameter])
 
             for output_script, description in output_scripts:
-                self.test_dust_output(self.nodes[0], dustfee_btc_kvb, output_script, description)
+                self.test_dust_output(self.nodes[0], dustfee_ubtc_kvb, output_script, description)
             self.generate(self.nodes[0], 1)
 
 
 if __name__ == '__main__':
-    DustRelayFeeTest(__file__).main()
+    DustRelayFeeTest().main()

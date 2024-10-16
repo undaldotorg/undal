@@ -7,10 +7,10 @@
 import itertools
 
 from test_framework.p2p import P2PInterface
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 
 
-class P2PDNSSeeds(BitcoinTestFramework):
+class P2PDNSSeeds(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 1
@@ -50,13 +50,13 @@ class P2PDNSSeeds(BitcoinTestFramework):
             extra_args=["-forcednsseed=1", f"-connect={fakeaddr}"],
         )
 
-        # Restore default bitcoind settings
+        # Restore default undald settings
         self.restart_node(0)
 
     def existing_outbound_connections_test(self):
         # Make sure addrman is populated to enter the conditional where we
         # delay and potentially skip DNS seeding.
-        self.nodes[0].addpeeraddress("192.0.0.8", 8333)
+        self.nodes[0].addpeeraddress("192.0.0.8", 19662)
 
         self.log.info("Check that we *do not* query DNS seeds if we have 2 outbound connections")
 
@@ -69,7 +69,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
         # Make sure addrman is populated to enter the conditional where we
         # delay and potentially skip DNS seeding. No-op when run after
         # existing_outbound_connections_test.
-        self.nodes[0].addpeeraddress("192.0.0.8", 8333)
+        self.nodes[0].addpeeraddress("192.0.0.8", 19662)
 
         self.log.info("Check that we *do* query DNS seeds if we only have 2 block-relay-only connections")
 
@@ -86,7 +86,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
         self.log.info("Check that we query DNS seeds if -forcednsseed param is set")
 
         with self.nodes[0].assert_debug_log(expected_msgs=["Loading addresses from DNS seed"], timeout=12):
-            # -dnsseed defaults to 1 in bitcoind, but 0 in the test framework,
+            # -dnsseed defaults to 1 in undald, but 0 in the test framework,
             # so pass it explicitly here
             self.restart_node(0, ["-forcednsseed", "-dnsseed=1"])
 
@@ -99,7 +99,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
         # Populate addrman with < 1000 addresses
         for i in range(5):
             a = f"192.0.0.{i}"
-            self.nodes[0].addpeeraddress(a, 8333)
+            self.nodes[0].addpeeraddress(a, 19662)
 
         # The delay should be 11 seconds
         with self.nodes[0].assert_debug_log(expected_msgs=["Waiting 11 seconds before querying DNS seeds.\n"]):
@@ -111,7 +111,7 @@ class P2PDNSSeeds(BitcoinTestFramework):
             second_octet = i % 256
             third_octet = i % 100
             a = f"{first_octet}.{second_octet}.{third_octet}.1"
-            self.nodes[0].addpeeraddress(a, 8333)
+            self.nodes[0].addpeeraddress(a, 19662)
             if (i > 1000 and i % 100 == 0):
                 # The addrman size is non-deterministic because new addresses
                 # are sorted into buckets, potentially displacing existing
@@ -126,4 +126,4 @@ class P2PDNSSeeds(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    P2PDNSSeeds(__file__).main()
+    P2PDNSSeeds().main()

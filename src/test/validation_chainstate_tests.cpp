@@ -4,7 +4,6 @@
 //
 #include <chainparams.h>
 #include <consensus/validation.h>
-#include <node/kernel_notifications.h>
 #include <random.h>
 #include <rpc/blockchain.h>
 #include <sync.h>
@@ -13,7 +12,6 @@
 #include <test/util/random.h>
 #include <test/util/setup_common.h>
 #include <uint256.h>
-#include <util/check.h>
 #include <validation.h>
 
 #include <vector>
@@ -37,11 +35,11 @@ BOOST_AUTO_TEST_CASE(validation_chainstate_resize_caches)
     // Add a coin to the in-memory cache, upsize once, then downsize.
     {
         LOCK(::cs_main);
-        const auto outpoint = AddTestCoin(m_rng, c1.CoinsTip());
+        const auto outpoint = AddTestCoin(c1.CoinsTip());
 
         // Set a meaningless bestblock value in the coinsview cache - otherwise we won't
         // flush during ResizecoinsCaches() and will subsequently hit an assertion.
-        c1.CoinsTip().SetBestBlock(m_rng.rand256());
+        c1.CoinsTip().SetBestBlock(InsecureRand256());
 
         BOOST_CHECK(c1.CoinsTip().HaveCoinInCache(outpoint));
 
@@ -70,25 +68,14 @@ BOOST_AUTO_TEST_CASE(validation_chainstate_resize_caches)
 BOOST_FIXTURE_TEST_CASE(chainstate_update_tip, TestChain100Setup)
 {
     ChainstateManager& chainman = *Assert(m_node.chainman);
-    const auto get_notify_tip{[&]() {
-        LOCK(m_node.notifications->m_tip_block_mutex);
-        return m_node.notifications->m_tip_block;
-    }};
-    uint256 curr_tip = get_notify_tip();
+    uint256 curr_tip = ::g_best_block;
 
     // Mine 10 more blocks, putting at us height 110 where a valid assumeutxo value can
     // be found.
     mineBlocks(10);
 
     // After adding some blocks to the tip, best block should have changed.
-    BOOST_CHECK(get_notify_tip() != curr_tip);
-
-    // Grab block 1 from disk; we'll add it to the background chain later.
-    std::shared_ptr<CBlock> pblockone = std::make_shared<CBlock>();
-    {
-        LOCK(::cs_main);
-        chainman.m_blockman.ReadBlockFromDisk(*pblockone, *chainman.ActiveChain()[1]);
-    }
+    BOOST_CHECK(::g_best_block != curr_tip);
 
     BOOST_REQUIRE(CreateAndActivateUTXOSnapshot(
         this, NoMalleation, /*reset_chainstate=*/ true));
@@ -96,28 +83,32 @@ BOOST_FIXTURE_TEST_CASE(chainstate_update_tip, TestChain100Setup)
     // Ensure our active chain is the snapshot chainstate.
     BOOST_CHECK(WITH_LOCK(::cs_main, return chainman.IsSnapshotActive()));
 
-    curr_tip = get_notify_tip();
+    curr_tip = ::g_best_block;
 
     // Mine a new block on top of the activated snapshot chainstate.
     mineBlocks(1);  // Defined in TestChain100Setup.
 
     // After adding some blocks to the snapshot tip, best block should have changed.
-    BOOST_CHECK(get_notify_tip() != curr_tip);
+    BOOST_CHECK(::g_best_block != curr_tip);
 
-    curr_tip = get_notify_tip();
+    curr_tip = ::g_best_block;
 
     BOOST_CHECK_EQUAL(chainman.GetAll().size(), 2);
 
-    Chainstate& background_cs{*Assert([&]() -> Chainstate* {
+    Chainstate& background_cs{*[&] {
         for (Chainstate* cs : chainman.GetAll()) {
             if (cs != &chainman.ActiveChainstate()) {
                 return cs;
             }
         }
-        return nullptr;
-    }())};
+        assert(false);
+    }()};
 
-    // Append the first block to the background chain.
+    // Create a block to append to the validation chain.
+    std::vector<CMutableTransaction> noTxns;
+    CScript scriptPubKey = CScript() << ToByteVector(coinbaseKey.GetPubKey()) << OP_CHECKSIG;
+    CBlock validation_block = this->CreateBlock(noTxns, scriptPubKey, background_cs);
+    auto pblock = std::make_shared<const CBlock>(validation_block);
     BlockValidationState state;
     CBlockIndex* pindex = nullptr;
     const CChainParams& chainparams = Params();
@@ -127,23 +118,22 @@ BOOST_FIXTURE_TEST_CASE(chainstate_update_tip, TestChain100Setup)
     // once it is changed to support multiple chainstates.
     {
         LOCK(::cs_main);
-        bool checked = CheckBlock(*pblockone, state, chainparams.GetConsensus());
+        bool checked = CheckBlock(*pblock, state, chainparams.GetConsensus());
         BOOST_CHECK(checked);
-        bool accepted = chainman.AcceptBlock(
-            pblockone, state, &pindex, true, nullptr, &newblock, true);
+        bool accepted = background_cs.AcceptBlock(
+            pblock, state, &pindex, true, nullptr, &newblock, true);
         BOOST_CHECK(accepted);
     }
-
     // UpdateTip is called here
-    bool block_added = background_cs.ActivateBestChain(state, pblockone);
+    bool block_added = background_cs.ActivateBestChain(state, pblock);
 
     // Ensure tip is as expected
-    BOOST_CHECK_EQUAL(background_cs.m_chain.Tip()->GetBlockHash(), pblockone->GetHash());
+    BOOST_CHECK_EQUAL(background_cs.m_chain.Tip()->GetBlockHash(), validation_block.GetHash());
 
-    // get_notify_tip() should be unchanged after adding a block to the background
+    // g_best_block should be unchanged after adding a block to the background
     // validation chain.
     BOOST_CHECK(block_added);
-    BOOST_CHECK_EQUAL(curr_tip, get_notify_tip());
+    BOOST_CHECK_EQUAL(curr_tip, ::g_best_block);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

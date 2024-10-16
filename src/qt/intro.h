@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_INTRO_H
-#define BITCOIN_QT_INTRO_H
+#ifndef UNDAL_QT_INTRO_H
+#define UNDAL_QT_INTRO_H
 
 #include <QDialog>
 #include <QMutex>
@@ -64,7 +64,6 @@ private Q_SLOTS:
 
 private:
     Ui::Intro *ui;
-    bool m_prune_checkbox_is_default{true};
     QThread* thread{nullptr};
     QMutex mutex;
     bool signalled{false};
@@ -85,4 +84,4 @@ private:
     friend class FreespaceChecker;
 };
 
-#endif // BITCOIN_QT_INTRO_H
+#endif // UNDAL_QT_INTRO_H

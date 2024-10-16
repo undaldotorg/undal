@@ -4,22 +4,21 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test multiple RPC users."""
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
+    get_datadir_path,
     str_to_b64str,
 )
 
-import http.client
 import os
-import platform
+import http.client
 import urllib.parse
 import subprocess
 from random import SystemRandom
 import string
 import configparser
 import sys
-from typing import Optional
 
 
 def call_with_auth(node, user, password):
@@ -34,13 +33,14 @@ def call_with_auth(node, user, password):
     return resp
 
 
-class HTTPBasicsTest(BitcoinTestFramework):
+class HTTPBasicsTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.supports_cli = False
 
-    def conf_setup(self):
-        #Append rpcauth to bitcoin.conf before initialization
+    def setup_chain(self):
+        super().setup_chain()
+        #Append rpcauth to undal.conf before initialization
         self.rtpassword = "cA773lm788buwYe4g4WT+05pKyNruVKjQ25x3n0DQcM="
         rpcauth = "rpcauth=rt:93648e835a54c573682c2eb19f882535$7681e9c5b74bdd85e78166031d2058e1069b3ed7ed967c93fc63abba06f31144"
 
@@ -64,15 +64,13 @@ class HTTPBasicsTest(BitcoinTestFramework):
         rpcauth3 = lines[1]
         self.password = lines[3]
 
-        with open(self.nodes[0].datadir_path / "bitcoin.conf", "a", encoding="utf8") as f:
+        with open(os.path.join(get_datadir_path(self.options.tmpdir, 0), "undal.conf"), 'a', encoding='utf8') as f:
             f.write(rpcauth + "\n")
             f.write(rpcauth2 + "\n")
             f.write(rpcauth3 + "\n")
-        with open(self.nodes[1].datadir_path / "bitcoin.conf", "a", encoding="utf8") as f:
+        with open(os.path.join(get_datadir_path(self.options.tmpdir, 1), "undal.conf"), 'a', encoding='utf8') as f:
             f.write("rpcuser={}\n".format(self.rpcuser))
             f.write("rpcpassword={}\n".format(self.rpcpassword))
-        self.restart_node(0)
-        self.restart_node(1)
 
     def test_auth(self, node, user, password):
         self.log.info('Correct...')
@@ -87,42 +85,7 @@ class HTTPBasicsTest(BitcoinTestFramework):
         self.log.info('Wrong...')
         assert_equal(401, call_with_auth(node, user + 'wrong', password + 'wrong').status)
 
-    def test_rpccookieperms(self):
-        p = {"owner": 0o600, "group": 0o640, "all": 0o644}
-
-        if platform.system() == 'Windows':
-            self.log.info(f"Skip cookie file permissions checks as OS detected as: {platform.system()=}")
-            return
-
-        self.log.info('Check cookie file permissions can be set using -rpccookieperms')
-
-        cookie_file_path = self.nodes[1].chain_path / '.cookie'
-        PERM_BITS_UMASK = 0o777
-
-        def test_perm(perm: Optional[str]):
-            if not perm:
-                perm = 'owner'
-                self.restart_node(1)
-            else:
-                self.restart_node(1, extra_args=[f"-rpccookieperms={perm}"])
-
-            file_stat = os.stat(cookie_file_path)
-            actual_perms = file_stat.st_mode & PERM_BITS_UMASK
-            expected_perms = p[perm]
-            assert_equal(expected_perms, actual_perms)
-
-        # Remove any leftover rpc{user|password} config options from previous tests
-        self.nodes[1].replace_in_config([("rpcuser", "#rpcuser"), ("rpcpassword", "#rpcpassword")])
-
-        self.log.info('Check default cookie permission')
-        test_perm(None)
-
-        self.log.info('Check custom cookie permissions')
-        for perm in ["owner", "group", "all"]:
-            test_perm(perm)
-
     def run_test(self):
-        self.conf_setup()
         self.log.info('Check correctness of the rpcauth config option')
         url = urllib.parse.urlparse(self.nodes[0].url)
 
@@ -139,38 +102,20 @@ class HTTPBasicsTest(BitcoinTestFramework):
         init_error = 'Error: Unable to start HTTP server. See debug log for details.'
 
         self.log.info('Check -rpcauth are validated')
-        self.log.info('Empty -rpcauth are treated as error')
+        # Empty -rpcauth= are ignored
+        self.restart_node(0, extra_args=['-rpcauth='])
         self.stop_node(0)
-        self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth'])
-        self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth='])
-        self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth=""'])
-        self.log.info('Check malformed -rpcauth')
         self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth=foo'])
         self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth=foo:bar'])
         self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth=foo:bar:baz'])
         self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth=foo$bar:baz'])
         self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth=foo$bar$baz'])
 
-        self.log.info('Check interactions between blank and non-blank rpcauth')
-        # pw = bitcoin
-        rpcauth_user1 = '-rpcauth=user1:6dd184e5e69271fdd69103464630014f$eb3d7ce67c4d1ff3564270519b03b636c0291012692a5fa3dd1d2075daedd07b'
-        rpcauth_user2 = '-rpcauth=user2:57b2f77c919eece63cfa46c2f06e46ae$266b63902f99f97eeaab882d4a87f8667ab84435c3799f2ce042ef5a994d620b'
-        self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=[rpcauth_user1, rpcauth_user2, '-rpcauth='])
-        self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=[rpcauth_user1, '-rpcauth=', rpcauth_user2])
-        self.nodes[0].assert_start_raises_init_error(expected_msg=init_error, extra_args=['-rpcauth=', rpcauth_user1, rpcauth_user2])
-
-        self.log.info('Check -norpcauth disables previous -rpcauth params')
-        self.restart_node(0, extra_args=[rpcauth_user1, rpcauth_user2, '-norpcauth'])
-        assert_equal(401, call_with_auth(self.nodes[0], 'user1', 'bitcoin').status)
-        assert_equal(401, call_with_auth(self.nodes[0], 'rt', self.rtpassword).status)
-        self.stop_node(0)
-
         self.log.info('Check that failure to write cookie file will abort the node gracefully')
-        (self.nodes[0].chain_path / ".cookie.tmp").mkdir()
+        cookie_file = os.path.join(get_datadir_path(self.options.tmpdir, 0), self.chain, '.cookie.tmp')
+        os.mkdir(cookie_file)
         self.nodes[0].assert_start_raises_init_error(expected_msg=init_error)
-
-        self.test_rpccookieperms()
 
 
 if __name__ == '__main__':
-    HTTPBasicsTest(__file__).main()
+    HTTPBasicsTest().main()

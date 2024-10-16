@@ -7,13 +7,13 @@
 import re
 
 from test_framework.blocktools import COINBASE_MATURITY
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
 )
 
 
-class WalletChangeAddressTest(BitcoinTestFramework):
+class WalletChangeAddressTest(UndalTestFramework):
     def add_options(self, parser):
         self.add_wallet_options(parser)
 
@@ -105,4 +105,4 @@ class WalletChangeAddressTest(BitcoinTestFramework):
         self.assert_change_pos(w1, tx, 0)
 
 if __name__ == '__main__':
-    WalletChangeAddressTest(__file__).main()
+    WalletChangeAddressTest().main()

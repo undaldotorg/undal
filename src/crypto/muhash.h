@@ -2,8 +2,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_CRYPTO_MUHASH_H
-#define BITCOIN_CRYPTO_MUHASH_H
+#ifndef UNDAL_CRYPTO_MUHASH_H
+#define UNDAL_CRYPTO_MUHASH_H
+
+#if defined(HAVE_CONFIG_H)
+#include <config/undal-config.h>
+#endif
 
 #include <serialize.h>
 #include <uint256.h>
@@ -85,7 +89,7 @@ public:
  * is intended to represent a set of elements.
  *
  * See also https://cseweb.ucsd.edu/~mihir/papers/inchash.pdf and
- * https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2017-May/014337.html.
+ * https://lists.linuxfoundation.org/pipermail/undal-dev/2017-May/014337.html.
  */
 class MuHash3072
 {
@@ -97,7 +101,7 @@ private:
 
 public:
     /* The empty set. */
-    MuHash3072() noexcept = default;
+    MuHash3072() noexcept {};
 
     /* A singleton with variable sized data in it. */
     explicit MuHash3072(Span<const unsigned char> in) noexcept;
@@ -124,4 +128,4 @@ public:
     }
 };
 
-#endif // BITCOIN_CRYPTO_MUHASH_H
+#endif // UNDAL_CRYPTO_MUHASH_H

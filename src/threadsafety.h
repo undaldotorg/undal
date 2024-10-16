@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_THREADSAFETY_H
-#define BITCOIN_THREADSAFETY_H
+#ifndef UNDAL_THREADSAFETY_H
+#define UNDAL_THREADSAFETY_H
 
 #include <mutex>
 
@@ -71,7 +71,7 @@ class SCOPED_LOCKABLE StdLockGuard : public std::lock_guard<StdMutex>
 {
 public:
     explicit StdLockGuard(StdMutex& cs) EXCLUSIVE_LOCK_FUNCTION(cs) : std::lock_guard<StdMutex>(cs) {}
-    ~StdLockGuard() UNLOCK_FUNCTION() = default;
+    ~StdLockGuard() UNLOCK_FUNCTION() {}
 };
 
-#endif // BITCOIN_THREADSAFETY_H
+#endif // UNDAL_THREADSAFETY_H

@@ -4,14 +4,12 @@
 
 #include <qt/psbtoperationsdialog.h>
 
-#include <common/messages.h>
 #include <core_io.h>
 #include <interfaces/node.h>
 #include <key_io.h>
 #include <node/psbt.h>
-#include <node/types.h>
 #include <policy/policy.h>
-#include <qt/bitcoinunits.h>
+#include <qt/undalunits.h>
 #include <qt/forms/ui_psbtoperationsdialog.h>
 #include <qt/guiutil.h>
 #include <qt/optionsmodel.h>
@@ -22,11 +20,9 @@
 #include <iostream>
 #include <string>
 
-using common::TransactionErrorString;
 using node::AnalyzePSBT;
 using node::DEFAULT_MAX_RAW_TX_FEE_RATE;
 using node::PSBTAnalysis;
-using node::TransactionError;
 
 PSBTOperationsDialog::PSBTOperationsDialog(
     QWidget* parent, WalletModel* wallet_model, ClientModel* client_model) : QDialog(parent, GUIUtil::dialog_flags),
@@ -59,10 +55,10 @@ void PSBTOperationsDialog::openWithPSBT(PartiallySignedTransaction psbtx)
     bool complete = FinalizePSBT(psbtx); // Make sure all existing signatures are fully combined before checking for completeness.
     if (m_wallet_model) {
         size_t n_could_sign;
-        const auto err{m_wallet_model->wallet().fillPSBT(SIGHASH_ALL, /*sign=*/false, /*bip32derivs=*/true, &n_could_sign, m_transaction_data, complete)};
-        if (err) {
+        TransactionError err = m_wallet_model->wallet().fillPSBT(SIGHASH_ALL, /*sign=*/false, /*bip32derivs=*/true, &n_could_sign, m_transaction_data, complete);
+        if (err != TransactionError::OK) {
             showStatus(tr("Failed to load transaction: %1")
-                           .arg(QString::fromStdString(PSBTErrorString(*err).translated)),
+                           .arg(QString::fromStdString(TransactionErrorString(err).translated)),
                        StatusLevel::ERR);
             return;
         }
@@ -83,11 +79,11 @@ void PSBTOperationsDialog::signTransaction()
 
     WalletModel::UnlockContext ctx(m_wallet_model->requestUnlock());
 
-    const auto err{m_wallet_model->wallet().fillPSBT(SIGHASH_ALL, /*sign=*/true, /*bip32derivs=*/true, &n_signed, m_transaction_data, complete)};
+    TransactionError err = m_wallet_model->wallet().fillPSBT(SIGHASH_ALL, /*sign=*/true, /*bip32derivs=*/true, &n_signed, m_transaction_data, complete);
 
-    if (err) {
+    if (err != TransactionError::OK) {
         showStatus(tr("Failed to sign transaction: %1")
-            .arg(QString::fromStdString(PSBTErrorString(*err).translated)), StatusLevel::ERR);
+            .arg(QString::fromStdString(TransactionErrorString(err).translated)), StatusLevel::ERR);
         return;
     }
 
@@ -132,14 +128,14 @@ void PSBTOperationsDialog::broadcastTransaction()
 }
 
 void PSBTOperationsDialog::copyToClipboard() {
-    DataStream ssTx{};
+    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
     ssTx << m_transaction_data;
     GUIUtil::setClipboard(EncodeBase64(ssTx.str()).c_str());
     showStatus(tr("PSBT copied to clipboard."), StatusLevel::INFO);
 }
 
 void PSBTOperationsDialog::saveTransaction() {
-    DataStream ssTx{};
+    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
     ssTx << m_transaction_data;
 
     QString selected_filter;
@@ -151,7 +147,7 @@ void PSBTOperationsDialog::saveTransaction() {
         }
         CTxDestination address;
         ExtractDestination(out.scriptPubKey, address);
-        QString amount = BitcoinUnits::format(m_client_model->getOptionsModel()->getDisplayUnit(), out.nValue);
+        QString amount = UndalUnits::format(m_client_model->getOptionsModel()->getDisplayUnit(), out.nValue);
         QString address_str = QString::fromStdString(EncodeDestination(address));
         filename_suggestion.append(address_str + "-" + amount);
         first = false;
@@ -171,47 +167,44 @@ void PSBTOperationsDialog::saveTransaction() {
 }
 
 void PSBTOperationsDialog::updateTransactionDisplay() {
-    m_ui->transactionDescription->setText(renderTransaction(m_transaction_data));
+    m_ui->transactionDescription->setText(QString::fromStdString(renderTransaction(m_transaction_data)));
     showTransactionStatus(m_transaction_data);
 }
 
-QString PSBTOperationsDialog::renderTransaction(const PartiallySignedTransaction &psbtx)
+std::string PSBTOperationsDialog::renderTransaction(const PartiallySignedTransaction &psbtx)
 {
-    QString tx_description;
-    QLatin1String bullet_point(" * ");
+    QString tx_description = "";
     CAmount totalAmount = 0;
     for (const CTxOut& out : psbtx.tx->vout) {
         CTxDestination address;
         ExtractDestination(out.scriptPubKey, address);
         totalAmount += out.nValue;
-        tx_description.append(bullet_point).append(tr("Sends %1 to %2")
-            .arg(BitcoinUnits::formatWithUnit(BitcoinUnit::BTC, out.nValue))
+        tx_description.append(tr(" * Sends %1 to %2")
+            .arg(UndalUnits::formatWithUnit(UndalUnit::UBTC, out.nValue))
             .arg(QString::fromStdString(EncodeDestination(address))));
-        // Check if the address is one of ours
-        if (m_wallet_model != nullptr && m_wallet_model->wallet().txoutIsMine(out)) tx_description.append(" (" + tr("own address") + ")");
         tx_description.append("<br>");
     }
 
     PSBTAnalysis analysis = AnalyzePSBT(psbtx);
-    tx_description.append(bullet_point);
+    tx_description.append(" * ");
     if (!*analysis.fee) {
         // This happens if the transaction is missing input UTXO information.
         tx_description.append(tr("Unable to calculate transaction fee or total transaction amount."));
     } else {
         tx_description.append(tr("Pays transaction fee: "));
-        tx_description.append(BitcoinUnits::formatWithUnit(BitcoinUnit::BTC, *analysis.fee));
+        tx_description.append(UndalUnits::formatWithUnit(UndalUnit::UBTC, *analysis.fee));
 
         // add total amount in all subdivision units
         tx_description.append("<hr />");
         QStringList alternativeUnits;
-        for (const BitcoinUnits::Unit u : BitcoinUnits::availableUnits())
+        for (const UndalUnits::Unit u : UndalUnits::availableUnits())
         {
             if(u != m_client_model->getOptionsModel()->getDisplayUnit()) {
-                alternativeUnits.append(BitcoinUnits::formatHtmlWithUnit(u, totalAmount));
+                alternativeUnits.append(UndalUnits::formatHtmlWithUnit(u, totalAmount));
             }
         }
         tx_description.append(QString("<b>%1</b>: <b>%2</b>").arg(tr("Total Amount"))
-            .arg(BitcoinUnits::formatHtmlWithUnit(m_client_model->getOptionsModel()->getDisplayUnit(), totalAmount)));
+            .arg(UndalUnits::formatHtmlWithUnit(m_client_model->getOptionsModel()->getDisplayUnit(), totalAmount)));
         tx_description.append(QString("<br /><span style='font-size:10pt; font-weight:normal;'>(=%1)</span>")
             .arg(alternativeUnits.join(" " + tr("or") + " ")));
     }
@@ -222,7 +215,7 @@ QString PSBTOperationsDialog::renderTransaction(const PartiallySignedTransaction
         tx_description.append(tr("Transaction has %1 unsigned inputs.").arg(QString::number(num_unsigned)));
     }
 
-    return tx_description;
+    return tx_description.toStdString();
 }
 
 void PSBTOperationsDialog::showStatus(const QString &msg, StatusLevel level) {
@@ -251,9 +244,9 @@ size_t PSBTOperationsDialog::couldSignInputs(const PartiallySignedTransaction &p
 
     size_t n_signed;
     bool complete;
-    const auto err{m_wallet_model->wallet().fillPSBT(SIGHASH_ALL, /*sign=*/false, /*bip32derivs=*/false, &n_signed, m_transaction_data, complete)};
+    TransactionError err = m_wallet_model->wallet().fillPSBT(SIGHASH_ALL, /*sign=*/false, /*bip32derivs=*/false, &n_signed, m_transaction_data, complete);
 
-    if (err) {
+    if (err != TransactionError::OK) {
         return 0;
     }
     return n_signed;

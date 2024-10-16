@@ -6,19 +6,31 @@
 #include <index/coinstatsindex.h>
 #include <interfaces/chain.h>
 #include <kernel/coinstats.h>
-#include <test/util/index.h>
 #include <test/util/setup_common.h>
 #include <test/util/validation.h>
+#include <util/time.h>
 #include <validation.h>
 
 #include <boost/test/unit_test.hpp>
 
+#include <chrono>
+
 BOOST_AUTO_TEST_SUITE(coinstatsindex_tests)
+
+static void IndexWaitSynced(BaseIndex& index)
+{
+    // Allow the CoinStatsIndex to catch up with the block index that is syncing
+    // in a background thread.
+    const auto timeout = GetTime<std::chrono::seconds>() + 120s;
+    while (!index.BlockUntilSyncedToCurrentChain()) {
+        BOOST_REQUIRE(timeout > GetTime<std::chrono::milliseconds>());
+        UninterruptibleSleep(100ms);
+    }
+}
 
 BOOST_FIXTURE_TEST_CASE(coinstatsindex_initial_sync, TestChain100Setup)
 {
     CoinStatsIndex coin_stats_index{interfaces::MakeChain(m_node), 1 << 20, true};
-    BOOST_REQUIRE(coin_stats_index.Init());
 
     const CBlockIndex* block_index;
     {
@@ -33,9 +45,9 @@ BOOST_FIXTURE_TEST_CASE(coinstatsindex_initial_sync, TestChain100Setup)
     // is started.
     BOOST_CHECK(!coin_stats_index.BlockUntilSyncedToCurrentChain());
 
-    BOOST_REQUIRE(coin_stats_index.StartBackgroundSync());
+    BOOST_REQUIRE(coin_stats_index.Start());
 
-    IndexWaitSynced(coin_stats_index, *Assert(m_node.shutdown_signal));
+    IndexWaitSynced(coin_stats_index);
 
     // Check that CoinStatsIndex works for genesis block.
     const CBlockIndex* genesis_block_index;
@@ -70,7 +82,7 @@ BOOST_FIXTURE_TEST_CASE(coinstatsindex_initial_sync, TestChain100Setup)
     // SyncWithValidationInterfaceQueue() call below is also needed to ensure
     // TSAN always sees the test thread waiting for the notification thread, and
     // avoid potential false positive reports.
-    m_node.validation_signals->SyncWithValidationInterfaceQueue();
+    SyncWithValidationInterfaceQueue();
 
     // Shutdown sequence (c.f. Shutdown() in init.cpp)
     coin_stats_index.Stop();
@@ -84,9 +96,8 @@ BOOST_FIXTURE_TEST_CASE(coinstatsindex_unclean_shutdown, TestChain100Setup)
     const CChainParams& params = Params();
     {
         CoinStatsIndex index{interfaces::MakeChain(m_node), 1 << 20};
-        BOOST_REQUIRE(index.Init());
-        BOOST_REQUIRE(index.StartBackgroundSync());
-        IndexWaitSynced(index, *Assert(m_node.shutdown_signal));
+        BOOST_REQUIRE(index.Start());
+        IndexWaitSynced(index);
         std::shared_ptr<const CBlock> new_block;
         CBlockIndex* new_block_index = nullptr;
         {
@@ -98,22 +109,21 @@ BOOST_FIXTURE_TEST_CASE(coinstatsindex_unclean_shutdown, TestChain100Setup)
             LOCK(cs_main);
             BlockValidationState state;
             BOOST_CHECK(CheckBlock(block, state, params.GetConsensus()));
-            BOOST_CHECK(m_node.chainman->AcceptBlock(new_block, state, &new_block_index, true, nullptr, nullptr, true));
+            BOOST_CHECK(chainstate.AcceptBlock(new_block, state, &new_block_index, true, nullptr, nullptr, true));
             CCoinsViewCache view(&chainstate.CoinsTip());
             BOOST_CHECK(chainstate.ConnectBlock(block, state, new_block_index, view));
         }
         // Send block connected notification, then stop the index without
         // sending a chainstate flushed notification. Prior to #24138, this
         // would cause the index to be corrupted and fail to reload.
-        ValidationInterfaceTest::BlockConnected(ChainstateRole::NORMAL, index, new_block, new_block_index);
+        ValidationInterfaceTest::BlockConnected(index, new_block, new_block_index);
         index.Stop();
     }
 
     {
         CoinStatsIndex index{interfaces::MakeChain(m_node), 1 << 20};
-        BOOST_REQUIRE(index.Init());
         // Make sure the index can be loaded.
-        BOOST_REQUIRE(index.StartBackgroundSync());
+        BOOST_REQUIRE(index.Start());
         index.Stop();
     }
 }

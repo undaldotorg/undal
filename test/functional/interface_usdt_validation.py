@@ -4,7 +4,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 """ Tests the validation:* tracepoint API interface.
-    See https://github.com/bitcoin/bitcoin/blob/master/doc/tracing.md#context-validation
+    See https://github.com/undal/undal/blob/master/doc/tracing.md#context-validation
 """
 
 import ctypes
@@ -16,7 +16,7 @@ except ImportError:
     pass
 
 from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
 
 
@@ -50,13 +50,13 @@ int trace_block_connected(struct pt_regs *ctx) {
 """
 
 
-class ValidationTracepointTest(BitcoinTestFramework):
+class ValidationTracepointTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
     def skip_test_if_missing_module(self):
         self.skip_if_platform_not_linux()
-        self.skip_if_no_bitcoind_tracepoints()
+        self.skip_if_no_undald_tracepoints()
         self.skip_if_no_python_bcc()
         self.skip_if_no_bpf_permissions()
 
@@ -64,7 +64,7 @@ class ValidationTracepointTest(BitcoinTestFramework):
         # Tests the validation:block_connected tracepoint by generating blocks
         # and comparing the values passed in the tracepoint arguments with the
         # blocks.
-        # See https://github.com/bitcoin/bitcoin/blob/master/doc/tracing.md#tracepoint-validationblock_connected
+        # See https://github.com/undal/undal/blob/master/doc/tracing.md#tracepoint-validationblock_connected
 
         class Block(ctypes.Structure):
             _fields_ = [
@@ -85,21 +85,36 @@ class ValidationTracepointTest(BitcoinTestFramework):
                     self.sigops,
                     self.duration)
 
+        # The handle_* function is a ctypes callback function called from C. When
+        # we assert in the handle_* function, the AssertError doesn't propagate
+        # back to Python. The exception is ignored. We manually count and assert
+        # that the handle_* functions succeeded.
         BLOCKS_EXPECTED = 2
+        blocks_checked = 0
         expected_blocks = dict()
-        events = []
 
         self.log.info("hook into the validation:block_connected tracepoint")
         ctx = USDT(pid=self.nodes[0].process.pid)
         ctx.enable_probe(probe="validation:block_connected",
                          fn_name="trace_block_connected")
         bpf = BPF(text=validation_blockconnected_program,
-                  usdt_contexts=[ctx], debug=0, cflags=["-Wno-error=implicit-function-declaration"])
+                  usdt_contexts=[ctx], debug=0)
 
         def handle_blockconnected(_, data, __):
+            nonlocal expected_blocks, blocks_checked
             event = ctypes.cast(data, ctypes.POINTER(Block)).contents
             self.log.info(f"handle_blockconnected(): {event}")
-            events.append(event)
+            block_hash = bytes(event.hash[::-1]).hex()
+            block = expected_blocks[block_hash]
+            assert_equal(block["hash"], block_hash)
+            assert_equal(block["height"], event.height)
+            assert_equal(len(block["tx"]), event.transactions)
+            assert_equal(len([tx["vin"] for tx in block["tx"]]), event.inputs)
+            assert_equal(0, event.sigops)  # no sigops in coinbase tx
+            # only plausibility checks
+            assert event.duration > 0
+            del expected_blocks[block_hash]
+            blocks_checked += 1
 
         bpf["block_connected"].open_perf_buffer(
             handle_blockconnected)
@@ -111,24 +126,12 @@ class ValidationTracepointTest(BitcoinTestFramework):
             expected_blocks[block_hash] = self.nodes[0].getblock(block_hash, 2)
 
         bpf.perf_buffer_poll(timeout=200)
-
-        self.log.info(f"check that we correctly traced {BLOCKS_EXPECTED} blocks")
-        for event in events:
-            block_hash = bytes(event.hash[::-1]).hex()
-            block = expected_blocks[block_hash]
-            assert_equal(block["hash"], block_hash)
-            assert_equal(block["height"], event.height)
-            assert_equal(len(block["tx"]), event.transactions)
-            assert_equal(len([tx["vin"] for tx in block["tx"]]), event.inputs)
-            assert_equal(0, event.sigops)  # no sigops in coinbase tx
-            # only plausibility checks
-            assert event.duration > 0
-            del expected_blocks[block_hash]
-        assert_equal(BLOCKS_EXPECTED, len(events))
-        assert_equal(0, len(expected_blocks))
-
         bpf.cleanup()
+
+        self.log.info(f"check that we traced {BLOCKS_EXPECTED} blocks")
+        assert_equal(BLOCKS_EXPECTED, blocks_checked)
+        assert_equal(0, len(expected_blocks))
 
 
 if __name__ == '__main__':
-    ValidationTracepointTest(__file__).main()
+    ValidationTracepointTest().main()

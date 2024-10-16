@@ -1,26 +1,30 @@
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2024 The Undal Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <consensus/amount.h>
-#include <primitives/transaction.h>
+#include <pubkey.h>
 #include <script/interpreter.h>
-#include <serialize.h>
 #include <streams.h>
-#include <test/fuzz/fuzz.h>
 #include <test/util/script.h>
+#include <version.h>
 
-#include <cassert>
-#include <ios>
-#include <utility>
-#include <vector>
+#include <test/fuzz/fuzz.h>
 
 FUZZ_TARGET(script_flags)
 {
-    if (buffer.size() > 100'000) return;
-    DataStream ds{buffer};
+    CDataStream ds(buffer, SER_NETWORK, INIT_PROTO_VERSION);
     try {
-        const CTransaction tx(deserialize, TX_WITH_WITNESS, ds);
+        int nVersion;
+        ds >> nVersion;
+        ds.SetVersion(nVersion);
+    } catch (const std::ios_base::failure&) {
+        return;
+    }
+
+    try {
+        const CTransaction tx(deserialize, ds);
 
         unsigned int verify_flags;
         ds >> verify_flags;

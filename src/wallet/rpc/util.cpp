@@ -6,12 +6,11 @@
 
 #include <common/url.h>
 #include <rpc/util.h>
-#include <util/any.h>
+#include <util/system.h>
 #include <util/translation.h>
 #include <wallet/context.h>
 #include <wallet/wallet.h>
 
-#include <string_view>
 #include <univalue.h>
 
 #include <boost/date_time/posix_time/posix_time.hpp>
@@ -62,9 +61,9 @@ bool ParseIncludeWatchonly(const UniValue& include_watchonly, const CWallet& wal
 
 bool GetWalletNameFromJSONRPCRequest(const JSONRPCRequest& request, std::string& wallet_name)
 {
-    if (request.URI.starts_with(WALLET_ENDPOINT_BASE)) {
+    if (URL_DECODE && request.URI.substr(0, WALLET_ENDPOINT_BASE.size()) == WALLET_ENDPOINT_BASE) {
         // wallet endpoint was used
-        wallet_name = UrlDecode(std::string_view{request.URI}.substr(WALLET_ENDPOINT_BASE.size()));
+        wallet_name = URL_DECODE(request.URI.substr(WALLET_ENDPOINT_BASE.size()));
         return true;
     }
     return false;
@@ -91,7 +90,7 @@ std::shared_ptr<CWallet> GetWalletForJSONRPCRequest(const JSONRPCRequest& reques
             RPC_WALLET_NOT_FOUND, "No wallet is loaded. Load a wallet using loadwallet or create a new one with createwallet. (Note: A default wallet is no longer automatically created)");
     }
     throw JSONRPCError(RPC_WALLET_NOT_SPECIFIED,
-        "Multiple wallets are loaded. Please select which wallet to use by requesting the RPC through the /wallet/<walletname> URI path.");
+        "Wallet file not specified (must request wallet RPC through /wallet/<filename> uri-path).");
 }
 
 void EnsureWalletIsUnlocked(const CWallet& wallet)
@@ -149,7 +148,7 @@ void PushParentDescriptors(const CWallet& wallet, const CScript& script_pubkey, 
     for (const auto& desc: wallet.GetWalletDescriptors(script_pubkey)) {
         parent_descs.push_back(desc.descriptor->ToString());
     }
-    entry.pushKV("parent_descs", std::move(parent_descs));
+    entry.pushKV("parent_descs", parent_descs);
 }
 
 void HandleWalletError(const std::shared_ptr<CWallet> wallet, DatabaseStatus& status, bilingual_str& error)
@@ -178,14 +177,4 @@ void HandleWalletError(const std::shared_ptr<CWallet> wallet, DatabaseStatus& st
         throw JSONRPCError(code, error.original);
     }
 }
-
-void AppendLastProcessedBlock(UniValue& entry, const CWallet& wallet)
-{
-    AssertLockHeld(wallet.cs_wallet);
-    UniValue lastprocessedblock{UniValue::VOBJ};
-    lastprocessedblock.pushKV("hash", wallet.GetLastBlockHash().GetHex());
-    lastprocessedblock.pushKV("height", wallet.GetLastBlockHeight());
-    entry.pushKV("lastprocessedblock", std::move(lastprocessedblock));
-}
-
 } // namespace wallet

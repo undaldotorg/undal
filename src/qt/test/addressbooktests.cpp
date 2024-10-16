@@ -19,7 +19,6 @@
 #include <key.h>
 #include <key_io.h>
 #include <wallet/wallet.h>
-#include <wallet/test/util.h>
 #include <walletinitinterface.h>
 
 #include <chrono>
@@ -32,7 +31,7 @@
 
 using wallet::AddWallet;
 using wallet::CWallet;
-using wallet::CreateMockableWalletDatabase;
+using wallet::CreateMockWalletDatabase;
 using wallet::RemoveWallet;
 using wallet::WALLET_FLAG_DESCRIPTORS;
 using wallet::WalletContext;
@@ -76,7 +75,7 @@ void TestAddAddressesToSendBook(interfaces::Node& node)
     auto wallet_loader = interfaces::MakeWalletLoader(*test.m_node.chain, *Assert(test.m_node.args));
     test.m_node.wallet_loader = wallet_loader.get();
     node.setContext(&test.m_node);
-    const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(node.context()->chain.get(), "", CreateMockableWalletDatabase());
+    const std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(node.context()->chain.get(), "", CreateMockWalletDatabase());
     wallet->LoadWallet();
     wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
     {
@@ -85,7 +84,8 @@ void TestAddAddressesToSendBook(interfaces::Node& node)
     }
 
     auto build_address = [&wallet]() {
-        CKey key = GenerateRandomKey();
+        CKey key;
+        key.MakeNewKey(true);
         CTxDestination dest(GetDestinationForKey(
             key.GetPubKey(), wallet->m_default_address_type));
 
@@ -222,8 +222,8 @@ void AddressBookTests::addressBookTests()
         // framework when it tries to look up unimplemented cocoa functions,
         // and fails to handle returned nulls
         // (https://bugreports.qt.io/browse/QTBUG-49686).
-        qWarning() << "Skipping AddressBookTests on mac build with 'minimal' platform set due to Qt bugs. To run AppTests, invoke "
-                      "with 'QT_QPA_PLATFORM=cocoa test_bitcoin-qt' on mac, or else use a linux or windows build.";
+        QWARN("Skipping AddressBookTests on mac build with 'minimal' platform set due to Qt bugs. To run AppTests, invoke "
+              "with 'QT_QPA_PLATFORM=cocoa test_undal-qt' on mac, or else use a linux or windows build.");
         return;
     }
 #endif

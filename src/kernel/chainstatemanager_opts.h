@@ -2,14 +2,11 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
-#define BITCOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
-
-#include <kernel/notifications_interface.h>
+#ifndef UNDAL_KERNEL_CHAINSTATEMANAGER_OPTS_H
+#define UNDAL_KERNEL_CHAINSTATEMANAGER_OPTS_H
 
 #include <arith_uint256.h>
 #include <dbwrapper.h>
-#include <script/sigcache.h>
 #include <txdb.h>
 #include <uint256.h>
 #include <util/time.h>
@@ -19,7 +16,6 @@
 #include <optional>
 
 class CChainParams;
-class ValidationSignals;
 
 static constexpr bool DEFAULT_CHECKPOINTS_ENABLED{true};
 static constexpr auto DEFAULT_MAX_TIP_AGE{24h};
@@ -34,7 +30,8 @@ namespace kernel {
 struct ChainstateManagerOpts {
     const CChainParams& chainparams;
     fs::path datadir;
-    std::optional<int32_t> check_block_index{};
+    const std::function<NodeClock::time_point()> adjusted_time_callback{nullptr};
+    std::optional<bool> check_block_index{};
     bool checkpoints_enabled{DEFAULT_CHECKPOINTS_ENABLED};
     //! If set, it will override the minimum work we will assume exists on some valid chain.
     std::optional<arith_uint256> minimum_chain_work{};
@@ -45,14 +42,8 @@ struct ChainstateManagerOpts {
     DBOptions block_tree_db{};
     DBOptions coins_db{};
     CoinsViewOptions coins_view{};
-    Notifications& notifications;
-    ValidationSignals* signals{nullptr};
-    //! Number of script check worker threads. Zero means no parallel verification.
-    int worker_threads_num{0};
-    size_t script_execution_cache_bytes{DEFAULT_SCRIPT_EXECUTION_CACHE_BYTES};
-    size_t signature_cache_bytes{DEFAULT_SIGNATURE_CACHE_BYTES};
 };
 
 } // namespace kernel
 
-#endif // BITCOIN_KERNEL_CHAINSTATEMANAGER_OPTS_H
+#endif // UNDAL_KERNEL_CHAINSTATEMANAGER_OPTS_H

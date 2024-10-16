@@ -34,7 +34,7 @@ from test_framework.blocktools import COINBASE_MATURITY
 from test_framework.messages import (
     COIN,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
 )
@@ -44,7 +44,7 @@ from test_framework.wallet import (
 )
 
 
-class ChainstateWriteCrashTest(BitcoinTestFramework):
+class ChainstateWriteCrashTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 4
         self.rpc_timeout = 480
@@ -85,18 +85,18 @@ class ChainstateWriteCrashTest(BitcoinTestFramework):
                 # Any of these RPC calls could throw due to node crash
                 self.start_node(node_index)
                 self.nodes[node_index].waitforblock(expected_tip)
-                utxo_hash = self.nodes[node_index].gettxoutsetinfo()['hash_serialized_3']
+                utxo_hash = self.nodes[node_index].gettxoutsetinfo()['hash_serialized_2']
                 return utxo_hash
             except Exception:
                 # An exception here should mean the node is about to crash.
-                # If bitcoind exits, then try again.  wait_for_node_exit()
-                # should raise an exception if bitcoind doesn't exit.
+                # If undald exits, then try again.  wait_for_node_exit()
+                # should raise an exception if undald doesn't exit.
                 self.wait_for_node_exit(node_index, timeout=10)
             self.crashed_on_restart += 1
             time.sleep(1)
 
-        # If we got here, bitcoind isn't coming back up on restart.  Could be a
-        # bug in bitcoind, or we've gotten unlucky with our dbcrash ratio --
+        # If we got here, undald isn't coming back up on restart.  Could be a
+        # bug in undald, or we've gotten unlucky with our dbcrash ratio --
         # perhaps we generated a test case that blew up our cache?
         # TODO: If this happens a lot, we should try to restart without -dbcrashratio
         # and make sure that recovery happens.
@@ -130,7 +130,7 @@ class ChainstateWriteCrashTest(BitcoinTestFramework):
         If any nodes crash while updating, we'll compare utxo hashes to
         ensure recovery was successful."""
 
-        node3_utxo_hash = self.nodes[3].gettxoutsetinfo()['hash_serialized_3']
+        node3_utxo_hash = self.nodes[3].gettxoutsetinfo()['hash_serialized_2']
 
         # Retrieve all the blocks from node3
         blocks = []
@@ -172,12 +172,12 @@ class ChainstateWriteCrashTest(BitcoinTestFramework):
         """Verify that the utxo hash of each node matches node3.
 
         Restart any nodes that crash while querying."""
-        node3_utxo_hash = self.nodes[3].gettxoutsetinfo()['hash_serialized_3']
+        node3_utxo_hash = self.nodes[3].gettxoutsetinfo()['hash_serialized_2']
         self.log.info("Verifying utxo hash matches for all nodes")
 
         for i in range(3):
             try:
-                nodei_utxo_hash = self.nodes[i].gettxoutsetinfo()['hash_serialized_3']
+                nodei_utxo_hash = self.nodes[i].gettxoutsetinfo()['hash_serialized_2']
             except OSError:
                 # probably a crash on db flushing
                 nodei_utxo_hash = self.restart_node(i, self.nodes[3].getbestblockhash())
@@ -286,4 +286,4 @@ class ChainstateWriteCrashTest(BitcoinTestFramework):
 
 
 if __name__ == "__main__":
-    ChainstateWriteCrashTest(__file__).main()
+    ChainstateWriteCrashTest().main()

@@ -1,10 +1,11 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2024 The Undal Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_COMPRESSOR_H
-#define BITCOIN_COMPRESSOR_H
+#ifndef UNDAL_COMPRESSOR_H
+#define UNDAL_COMPRESSOR_H
 
 #include <prevector.h>
 #include <primitives/transaction.h>
@@ -55,8 +56,8 @@ struct ScriptCompression
 {
     /**
      * make this static for now (there are only 6 special scripts defined)
-     * this can potentially be extended together with a new version for
-     * transactions, in which case this value becomes dependent on version
+     * this can potentially be extended together with a new nVersion for
+     * transactions, in which case this value becomes dependent on nVersion
      * and nHeight of the enclosing transaction.
      */
     static const unsigned int nSpecialScripts = 6;
@@ -115,4 +116,4 @@ struct TxOutCompression
     FORMATTER_METHODS(CTxOut, obj) { READWRITE(Using<AmountCompression>(obj.nValue), Using<ScriptCompression>(obj.scriptPubKey)); }
 };
 
-#endif // BITCOIN_COMPRESSOR_H
+#endif // UNDAL_COMPRESSOR_H

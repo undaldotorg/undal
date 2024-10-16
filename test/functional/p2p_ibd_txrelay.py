@@ -26,13 +26,13 @@ from test_framework.p2p import (
         P2PInterface,
         p2p_lock
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 
 MAX_FEE_FILTER = Decimal(9170997) / COIN
 NORMAL_FEE_FILTER = Decimal(100) / COIN
 
 
-class P2PIBDTxRelayTest(BitcoinTestFramework):
+class P2PIBDTxRelayTest(UndalTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
         self.num_nodes = 2
@@ -53,7 +53,7 @@ class P2PIBDTxRelayTest(BitcoinTestFramework):
         peer_inver.send_and_ping(msg_inv([CInv(t=MSG_WTX, h=txid)]))
         # The node should not send a getdata, but if it did, it would first delay 2 seconds
         self.nodes[0].setmocktime(int(time.time() + NONPREF_PEER_TX_DELAY))
-        peer_inver.sync_with_ping()
+        peer_inver.sync_send_with_ping()
         with p2p_lock:
             assert txid not in peer_inver.getdata_requests
         self.nodes[0].disconnect_p2ps()
@@ -86,4 +86,4 @@ class P2PIBDTxRelayTest(BitcoinTestFramework):
             peer_txer.send_and_ping(msg_tx(tx))
 
 if __name__ == '__main__':
-    P2PIBDTxRelayTest(__file__).main()
+    P2PIBDTxRelayTest().main()

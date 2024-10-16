@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_QT_ASKPASSPHRASEDIALOG_H
-#define BITCOIN_QT_ASKPASSPHRASEDIALOG_H
+#ifndef UNDAL_QT_ASKPASSPHRASEDIALOG_H
+#define UNDAL_QT_ASKPASSPHRASEDIALOG_H
 
 #include <QDialog>
 
@@ -26,7 +26,6 @@ public:
         Encrypt,    /**< Ask passphrase twice and encrypt */
         Unlock,     /**< Ask passphrase and unlock */
         ChangePass, /**< Ask old passphrase + new passphrase twice */
-        UnlockMigration, /**< Ask passphrase for unlocking during migration */
     };
 
     explicit AskPassphraseDialog(Mode mode, QWidget *parent, SecureString* passphrase_out = nullptr);
@@ -53,4 +52,4 @@ protected:
     bool eventFilter(QObject *object, QEvent *event) override;
 };
 
-#endif // BITCOIN_QT_ASKPASSPHRASEDIALOG_H
+#endif // UNDAL_QT_ASKPASSPHRASEDIALOG_H

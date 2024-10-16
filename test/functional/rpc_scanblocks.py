@@ -9,7 +9,7 @@ from test_framework.blockfilter import (
     bip158_relevant_scriptpubkeys,
 )
 from test_framework.messages import COIN
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -20,7 +20,7 @@ from test_framework.wallet import (
 )
 
 
-class ScanblocksTest(BitcoinTestFramework):
+class ScanblocksTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.extra_args = [["-blockfilterindex=1"], []]
@@ -49,7 +49,6 @@ class ScanblocksTest(BitcoinTestFramework):
         assert blockhash in out['relevant_blocks']
         assert_equal(height, out['to_height'])
         assert_equal(0, out['from_height'])
-        assert_equal(True, out['completed'])
 
         # mine another block
         blockhash_new = self.generate(node, 1)[0]
@@ -136,4 +135,4 @@ class ScanblocksTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    ScanblocksTest(__file__).main()
+    ScanblocksTest().main()

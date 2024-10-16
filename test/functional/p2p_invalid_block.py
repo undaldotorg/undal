@@ -24,16 +24,15 @@ from test_framework.blocktools import (
 from test_framework.messages import COIN
 from test_framework.p2p import P2PDataStore
 from test_framework.script import OP_TRUE
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_equal
 
 
-class InvalidBlockRequestTest(BitcoinTestFramework):
+class InvalidBlockRequestTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
-        # whitelist peers to speed up tx relay / mempool sync
-        self.noban_tx_relay = True
+        self.extra_args = [["-whitelist=noban@127.0.0.1"]]
 
     def run_test(self):
         # Add p2p connection to node0
@@ -47,10 +46,12 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
 
         self.log.info("Create a new block with an anyone-can-spend coinbase")
 
+        height = 1
         block = create_block(tip, create_coinbase(height), block_time)
         block.solve()
         # Save the coinbase for later
         block1 = block
+        tip = block.sha256
         peer.send_blocks_and_test([block1], node, success=True)
 
         self.log.info("Mature the block.")
@@ -138,4 +139,4 @@ class InvalidBlockRequestTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    InvalidBlockRequestTest(__file__).main()
+    InvalidBlockRequestTest().main()

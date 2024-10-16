@@ -9,10 +9,10 @@ Test the following RPCs:
    - estimaterawfee
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import UndalTestFramework
 from test_framework.util import assert_raises_rpc_error
 
-class EstimateFeeTest(BitcoinTestFramework):
+class EstimateFeeTest(UndalTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
 
@@ -36,9 +36,6 @@ class EstimateFeeTest(BitcoinTestFramework):
         assert_raises_rpc_error(-1, "estimatesmartfee", self.nodes[0].estimatesmartfee, 1, 'ECONOMICAL', 1)
         assert_raises_rpc_error(-1, "estimaterawfee", self.nodes[0].estimaterawfee, 1, 1, 1)
 
-        # max value of 1008 per src/policy/fees.h
-        assert_raises_rpc_error(-8, "Invalid conf_target, must be between 1 and 1008", self.nodes[0].estimaterawfee, 1009)
-
         # valid calls
         self.nodes[0].estimatesmartfee(1)
         # self.nodes[0].estimatesmartfee(1, None)
@@ -52,4 +49,4 @@ class EstimateFeeTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    EstimateFeeTest(__file__).main()
+    EstimateFeeTest().main()

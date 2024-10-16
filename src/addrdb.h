@@ -1,28 +1,29 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2021 The Bitcoin Core developers
+// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2024 The Undal Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_ADDRDB_H
-#define BITCOIN_ADDRDB_H
+#ifndef UNDAL_ADDRDB_H
+#define UNDAL_ADDRDB_H
 
-#include <net_types.h>
+#include <net_types.h> // For banmap_t
+#include <univalue.h>
 #include <util/fs.h>
-#include <util/result.h>
 
-#include <memory>
+#include <optional>
 #include <vector>
 
 class ArgsManager;
 class AddrMan;
 class CAddress;
-class DataStream;
+class CDataStream;
 class NetGroupManager;
-
-/** Only used by tests. */
-void ReadFromStream(AddrMan& addr, DataStream& ssPeers);
+struct bilingual_str;
 
 bool DumpPeerAddresses(const ArgsManager& args, const AddrMan& addr);
+/** Only used by tests. */
+void ReadFromStream(AddrMan& addr, CDataStream& ssPeers);
 
 /** Access to the banlist database (banlist.json) */
 class CBanDB
@@ -49,7 +50,7 @@ public:
 };
 
 /** Returns an error string on failure */
-util::Result<std::unique_ptr<AddrMan>> LoadAddrman(const NetGroupManager& netgroupman, const ArgsManager& args);
+std::optional<bilingual_str> LoadAddrman(const NetGroupManager& netgroupman, const ArgsManager& args, std::unique_ptr<AddrMan>& addrman);
 
 /**
  * Dump the anchor IP address database (anchors.dat)
@@ -67,4 +68,4 @@ void DumpAnchors(const fs::path& anchors_db_path, const std::vector<CAddress>& a
  */
 std::vector<CAddress> ReadAnchors(const fs::path& anchors_db_path);
 
-#endif // BITCOIN_ADDRDB_H
+#endif // UNDAL_ADDRDB_H
